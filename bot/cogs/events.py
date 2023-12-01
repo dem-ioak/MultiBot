@@ -6,8 +6,9 @@ from datetime import datetime, time, date
 from discord import Embed, Color, Status, Streaming, DMChannel
 from discord.ext import commands, tasks
 
-from util.constants import SERVERS, USERS, TEXT_CHANNELS, VCS, WRAPPED, VC_EVENTS
+from util.constants import SERVERS, USERS, TEXT_CHANNELS, VCS, WRAPPED, VC_EVENTS, LEVEL_UP
 from util.enums import EventType
+from util.helper_functions import leveled_up
 
 
 class Events(commands.Cog):
@@ -88,93 +89,173 @@ class Events(commands.Cog):
     async def on_member_remove(self, member):
         pass
 
-# Voice State
-@commands.Cog.listener()
-async def on_voice_state_update(self, member, before, after):
-    guild_id = member.guild_id
-    user_id = member.id
-    server_data = SERVERS.find_one({"_id" : guild_id})
+    # Voice State
+    @commands.Cog.listener()
+    async def on_voice_state_update(self, member, before, after):
+        guild_id = member.guild_id
+        user_id = member.id
+        server_data = SERVERS.find_one({"_id" : guild_id})
 
-    create_id = server_data["vc_create_id"]
-    category_id = server_data["vc_category_id"]
+        create_id = server_data["vc_create_id"]
+        category_id = server_data["vc_category_id"]
 
-    created_vc = after.channel and after.channel.id == create_id
-    changed_vc = before.channel != after.channel
+        created_vc = after.channel and after.channel.id == create_id
+        changed_vc = before.channel != after.channel
 
-    curr_time = datetime.utcnow()
+        curr_time = datetime.utcnow()
 
-    # Add channel to data if it is a new vc
-    if created_vc:
-        pass
+        # Add channel to data if it is a new vc
+        if created_vc:
+            category = discord.utils.get(member.guild.categories, id = category_id)
+            created_channel = await member.guild.create_voice_channel(
+                name = f"{member.name}'s VC",
+                category = category
+            )
+            await member.move_to(created_channel)
+            channel_data = DataClasses.VChannel(
+                _id = created_channel.id,
+                owner = user_id,
+                denied = [],
+                allowed = [],
+                hidden = [],
+                is_locked = False,
+                created_at = curr_time,
+                deleted_at = None
+            )
+            VCS.insert_one(channel_data.__dict__)
 
-    # Delete VC if empty after leaving
-    if before.channel:
-        vc_data = VCS.find_one({"_id" : before.channel.id})
-        if vc_data is not None:
-            if before.channel.id != create_id:
-                if len(before.channel.members) == 0:
-                    await before.channel.delete()
-                    VCS.delete_one(vc_data)
-    
-    # Wrapped Stuff
-    wrapped_data = WRAPPED.find_one({"_id" : user_id})
-    afk_corner = -1
-    events = []
-
-    # Start a stream
-    if not before.self_stream and after.self_stream:
-        events.append(
-            DataClasses.VCEvent(
-                guild_id, 
-                user_id,
-                curr_time, 
-                EventType.START_STREAM, 
-                after.channel.id))
-    
-    # End a stream
-    if before.self_stream and (after.channel != before.channel or not after.self_stream):
-        events.append(
-            DataClasses.VCEvent(
-                guild_id, 
-                user_id,
-                curr_time, 
-                EventType.END_STREAM, 
-                (after.channel.id if after.channel else None)))
-
-
-    # The event that triggered this method was a movement between VCs (or leaving  / joining)
-    if changed_vc:
-        # If you left a VC
+        # Delete VC if empty after leaving
         if before.channel:
-            events.append(
-                DataClasses.VCEvent(
-                    guild_id,
-                    user_id,
-                    curr_time,
-                    (EventType.LEAVE_VC if before.channel.id != afk_corner else EventType.LEAVE_AFK),
-                    before.channel.id
-                )
-            )
+            vc_data = VCS.find_one({"_id" : before.channel.id})
+            if vc_data is not None:
+                if before.channel.id != create_id:
+                    if len(before.channel.members) == 0:
+                        await before.channel.delete()
+                        VCS.update_one(
+                            vc_data, 
+                            {"$set" : {"deleted_at" : curr_time}})
         
-        # If you joined a VC
-        if after.channel:
+        # Wrapped Stuff
+        afk_corner = -1
+        events = []
+
+        # Start a stream
+        if not before.self_stream and after.self_stream:
             events.append(
                 DataClasses.VCEvent(
-                    guild_id,
+                    guild_id, 
                     user_id,
-                    curr_time,
-                    (EventType.JOIN_VC if after.channel.id != afk_corner else EventType.JOIN_AFK),
-                    after.channel.id
+                    curr_time, 
+                    EventType.START_STREAM, 
+                    after.channel.id))
+        
+        # End a stream
+        if before.self_stream and (after.channel != before.channel or not after.self_stream):
+            events.append(
+                DataClasses.VCEvent(
+                    guild_id, 
+                    user_id,
+                    curr_time, 
+                    EventType.END_STREAM, 
+                    (after.channel.id if after.channel else None)))
+
+
+        # The event that triggered this method was a movement between VCs (or leaving  / joining)
+        if changed_vc:
+            # If you left a VC
+            if before.channel:
+                events.append(
+                    DataClasses.VCEvent(
+                        guild_id,
+                        user_id,
+                        curr_time,
+                        (EventType.LEAVE_VC if before.channel.id != afk_corner else EventType.LEAVE_AFK),
+                        before.channel.id
+                    )
                 )
-            )
+            
+            # If you joined a VC
+            if after.channel:
+                events.append(
+                    DataClasses.VCEvent(
+                        guild_id,
+                        user_id,
+                        curr_time,
+                        (EventType.JOIN_VC if after.channel.id != afk_corner else EventType.JOIN_AFK),
+                        after.channel.id
+                    )
+                )
+        
+        documents = [event.__dict__ for event in events]
+        VC_EVENTS.insert_many(documents)
     
-    documents = [event.__dict__ for event in events]
-    VC_EVENTS.insert_many(documents)
-
-
-
-
-
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        try:
+            assert message.author != self.client.user
+            assert not message.author.bot
+            assert not isinstance(message.channel, DMChannel)
+        except AssertionError:
+            return
         
+        guild_id = message.guild.id
+        user_id = message.author.id
+        primary_key = {"guild_id" : guild_id, "user_id" : user_id}
+        user_data = USERS.find_one({"_id" : primary_key})
+        wrapped_data = WRAPPED.find_one({"_id" : primary_key})  
+        server_data = SERVERS.find_one({"_id" : guild_id})
+        
+        if user_data is None:
+            return
 
+        # Update level if server has levels enabled
+        if server_data["levels"]:
+            rate_limit = self.get_ratelimit(message)
+            if not rate_limit:
+                updated_xp = user_data["xp"] + random.randint(5, 15)
+                current_level = user_data["level"]
+                if leveled_up(updated_xp, current_level):
+                    current_level += 1
+                    await message.channel.send(embed = Embed(
+                        title = LEVEL_UP.format(current_level),
+                        color = Color.green()
+                    ))
+                    await message.channel.send(message.author.mention)
                 
+                USERS.update_one(
+                    user_data,
+                    {"set" : {
+                        "xp" : updated_xp,
+                        "level" : current_level
+                    }}
+                )
+        
+        # Wrapped Stuff
+        content = message.content
+        words = len(content.split(" "))
+        pings_everyone = int(message.mention_everyone)
+        has_image = int(len(message.attachments) > 0)
+        has_embed = int("tenor.com" in content)
+        mentions = [target.id for target in message.mentions]
+        toInc = {
+                "everyone_pings" : pings_everyone,
+                "image_count" : has_image,
+                "gif_count" : has_embed,
+                "word_count" : words,
+                "message_count" : 1,
+                "user_pings.count" : int(len(mentions) > 0)
+            } 
+        
+        for target in mentions:
+            key = f"user_pings.{target}"
+            toInc[key] = 1
+        
+        WRAPPED.update_one(wrapped_data, {"$inc" : toInc})
+
+
+
+
+
+            
+
+                    

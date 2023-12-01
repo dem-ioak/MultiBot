@@ -22,7 +22,7 @@ class WrappedUser:
     # Data for Wrapped
     _id : dict
     user_pings : dict
-    vc_names : list
+    #vc_names : list
     polls_voted_on : list
     message_count : int = 0
     word_count : int = 0
@@ -52,6 +52,7 @@ class VChannel:
 
     created_at : datetime
     deleted_at : datetime = None
+    
 @dataclass
 class TChannel:
     _id : int
