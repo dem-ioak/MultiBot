@@ -6,6 +6,7 @@ class FMUser:
 
     def is_valid(self):
         """Determine whether the provided LastFM username is an active account"""
+        pass
             
     def get_plays_track(self, track):
         """Get this user's playcount for provided track"""

@@ -6,8 +6,9 @@ from datetime import datetime, time, date
 from discord import Embed, Color, Status, Streaming, DMChannel
 from discord.ext import commands, tasks
 
-from util.constants import SERVERS, USERS, TEXT_CHANNELS, VCS, WRAPPED
+from util.constants import SERVERS, USERS, TEXT_CHANNELS, VCS, WRAPPED, VC_EVENTS
 from util.enums import EventType
+
 
 class Events(commands.Cog):
     def __init__(self, client):
@@ -122,46 +123,55 @@ async def on_voice_state_update(self, member, before, after):
 
     # Start a stream
     if not before.self_stream and after.self_stream:
-        events.append((
-            guild_id, 
-            curr_time, 
-            EventType.START_STREAM, 
-            after.channel.id))
+        events.append(
+            DataClasses.VCEvent(
+                guild_id, 
+                user_id,
+                curr_time, 
+                EventType.START_STREAM, 
+                after.channel.id))
     
     # End a stream
     if before.self_stream and (after.channel != before.channel or not after.self_stream):
-        events.append((
-            guild_id, 
-            curr_time, 
-            EventType.END_STREAM, 
-            (after.channel.id if after.channel else None)))
-
-
-    if changed_vc:
-        # Join a VC after not being in one
-        if not before.channel and after.channel:
-            if after.channel.id != afk_corner: # DON'T TRACK WHEN SOMEONE JOINS AFK ON THEIR OWN
-                events.append((guild_id, curr_time, EventType.JOIN_VC, after.channel.id))
-
-        # Switch from one VC to another
-        elif before.channel and after.channel:
-            if after.channel.id == afk_corner: # Moved to / Joined AFK
-                events.append((guild_id, curr_time, EventType.JOIN_AFK, after.channel.id))
-
-            elif before.channel.id == afk_corner: # Move From / Left AFK
-                events.append((guild_id, curr_time, EventType.LEAVE_AFK, before.channel.id))
-
-            else:
-                events.append((guild_id, curr_time, EventType.LEAVE_VC, before.channel.id))
-                events.append((guild_id, curr_time, EventType.JOIN_VC, after.channel.id))
-
-        # Leave VC completely
-        else:
-            events.append((
+        events.append(
+            DataClasses.VCEvent(
                 guild_id, 
+                user_id,
                 curr_time, 
-                (EventType.LEAVE_VC if before.channel.id != afk_corner else EventType.LEAVE_AFK), 
-                before.channel.id))
+                EventType.END_STREAM, 
+                (after.channel.id if after.channel else None)))
+
+
+    # The event that triggered this method was a movement between VCs (or leaving  / joining)
+    if changed_vc:
+        # If you left a VC
+        if before.channel:
+            events.append(
+                DataClasses.VCEvent(
+                    guild_id,
+                    user_id,
+                    curr_time,
+                    (EventType.LEAVE_VC if before.channel.id != afk_corner else EventType.LEAVE_AFK),
+                    before.channel.id
+                )
+            )
+        
+        # If you joined a VC
+        if after.channel:
+            events.append(
+                DataClasses.VCEvent(
+                    guild_id,
+                    user_id,
+                    curr_time,
+                    (EventType.JOIN_VC if after.channel.id != afk_corner else EventType.JOIN_AFK),
+                    after.channel.id
+                )
+            )
+    
+    documents = [event.__dict__ for event in events]
+    VC_EVENTS.insert_many(documents)
+
+
 
 
 

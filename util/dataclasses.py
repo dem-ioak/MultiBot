@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 
+from util.enums import EventType
+
 @dataclass
 class User:
     # Server Members
@@ -18,7 +20,7 @@ class User:
 @dataclass
 class WrappedUser:
     # Data for Wrapped
-    _id : int
+    _id : dict
     user_pings : dict
     vc_names : list
     polls_voted_on : list
@@ -28,16 +30,16 @@ class WrappedUser:
     gif_count : int = 0
     everyone_pings : int = 0
 
-    vcs_created : int = 0
-    vcs_joined : int = 0
-    stream_count : int = 0
-    time_spent_vc : float = 0
-    time_spent_afk : float = 0
-    time_spent_streaming : float = 0
-    afk_count : int = 0
-    current_vc : bool = False
-    current_afk : bool = False
-    current_stream : bool = False
+    # vcs_created : int = 0
+    # vcs_joined : int = 0
+    # stream_count : int = 0
+    # time_spent_vc : float = 0
+    # time_spent_afk : float = 0
+    # time_spent_streaming : float = 0
+    # afk_count : int = 0
+    # current_vc : bool = False
+    # current_afk : bool = False
+    # current_stream : bool = False
 
 @dataclass
 class VChannel:
@@ -48,6 +50,8 @@ class VChannel:
     hidden : list
     is_locked : bool
 
+    created_at : datetime
+    deleted_at : datetime = None
 @dataclass
 class TChannel:
     _id : int
@@ -94,6 +98,10 @@ class WatchListEntry:
     curr : int = None
     total : int = None
 
-
-
-
+@dataclass
+class VCEvent:
+    guild_id : int
+    user_id : int
+    timestamp : datetime
+    event_type : EventType
+    channel_id : int

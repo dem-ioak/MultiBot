@@ -11,6 +11,7 @@ USERS = cluster["users"]
 TEXT_CHANNELS = cluster["textchannels"]
 VCS = cluster["voicechannels"]
 WRAPPED = cluster["wrapped"]
+VC_EVENTS = cluster["vcevents"]
 
 MY_USER_ID = 739618992393682974
 
