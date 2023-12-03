@@ -81,9 +81,19 @@ class Events(commands.Cog):
 
         # Give user all `auto_roles` for this server
         for auto_role in server_data["auto_roles"]:
-            pass
+            role = discord.utils.get(member.guild.roles, id = auto_role)
+            try:
+                await member.add_roles(role)
+            except Exception as e:
+                continue
 
-        # TODO: Wrapped Stuff
+        wrapped_data = WRAPPED.find_one({"_id" : primary_key})
+        if wrapped_data is None:
+            wrapped_user_obj = DataClasses.WrappedUser(
+                _id = primary_key,
+                user_pings = {"count" : 0}
+            )
+            WRAPPED.insert_one(wrapped_user_obj.__dict__)
     
     @commands.Cog.listener()
     async def on_member_remove(self, member):
@@ -251,6 +261,84 @@ class Events(commands.Cog):
             toInc[key] = 1
         
         WRAPPED.update_one(wrapped_data, {"$inc" : toInc})
+    
+    @commands.Cog.listener()
+    async def on_message_delete(self, message):
+        try:
+            assert message.author != self.client.user
+            assert not message.content.startswith(".")
+            assert len(message.attachments) == 0
+        except AssertionError:
+            return
+        
+        guild_id = message.guild.id
+        user_id = message.author.id
+        channel_id = message.channel.id
+        server_data = SERVERS.find({"_id" : guild_id})
+        channel_data = TEXT_CHANNELS.find_one({"_id" : channel_id})
+        member = message.author
+        if channel_data is not None:
+            TEXT_CHANNELS.update_one(
+                channel_data,
+                {"$set" : {
+                    "deleted_author" : user_id,
+                    "deleted_content" : message.content
+                }})
+        
+            logs = server_data["logs_id"]
+            if logs != -1:
+                pass
+
+    @commands.Cog.listener()
+    async def on_message_edit(self, before, after):
+        try:
+            assert before.author != self.client.user
+            assert "https://" not in before.content
+        except AssertionError:
+            return
+
+        guild_id = before.guild.id
+        user_id = before.author.id
+        channel_id = before.channel.id
+        server_data = SERVERS.find({"_id" : guild_id})
+        channel_data = TEXT_CHANNELS.find_one({"_id" : channel_id})
+        member = before.author     
+        if channel_data is not None:
+            TEXT_CHANNELS.update_one(
+                channel_data,
+                {"$set" : {
+                    "edited_author" : user_id,
+                    "edited_content" : before.content
+                }}
+            )
+
+            logs = server_data["logs_id"]
+            if logs != -1:
+                pass
+    
+    @commands.Cog.listener()
+    async def on_guild_channel_delete(self, channel):
+        curr_time = datetime.utcnow()
+        collection = TEXT_CHANNELS if isinstance(channel, discord.TextChannel) else VCS
+        channel_data = collection.find_one({"_id" : channel.id})
+        if channel_data is not None:
+            collection.update(
+                    channel_data,
+                    {"$set" : {
+                        "deleted_at" : curr_time
+                    }}
+                )
+    
+    @commands.Cog.listener()
+    async def on_guild_channel_create(self, channel):
+        if isinstance(channel, discord.TextChannel):
+            channel_data_obj = DataClasses.TChannel(channel.id)
+            TEXT_CHANNELS.insert_one(channel_data_obj.__dict__)
+            # TODO: Banished stuff
+
+
+async def setup(client):
+    await client.add_cog(Events(client))
 
 
 

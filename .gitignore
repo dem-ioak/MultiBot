@@ -1,2 +1,3 @@
 .env
 util/constants.py
+cog_template.py

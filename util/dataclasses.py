@@ -22,14 +22,15 @@ class WrappedUser:
     # Data for Wrapped
     _id : dict
     user_pings : dict
-    #vc_names : list
-    polls_voted_on : list
+
     message_count : int = 0
     word_count : int = 0
     image_count : int = 0
     gif_count : int = 0
     everyone_pings : int = 0
-
+    
+    # polls_voted_on : list
+    # vc_names : list
     # vcs_created : int = 0
     # vcs_joined : int = 0
     # stream_count : int = 0
