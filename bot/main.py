@@ -23,15 +23,21 @@ class MyBot(commands.Bot):
         await self.load_cogs()
 
     async def load_cogs(self):
-        for filename in os.listdir('./cogs'):
-            if filename.endswith(".py"):
+        for filename in os.listdir('bot/cogs'):
+            if filename.endswith(".py") and "__init__" not in filename:
                 try:
-                    await self.load_extension(filename)
+                    print(filename)
+                    await self.load_extension(f"cogs.{filename[:-3]}")
                 except Exception as e:
+                    print(e)
                     continue
-    
-    async def load_extension(self, filename):
-        await self.client.load_extension(f"cogs.{filename[:-3]}")
+
+client = MyBot()
+async def main():
+    async with client:
+        await client.start(CLIENT_KEY)
+
+asyncio.run(main())
 
 
 

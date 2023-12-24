@@ -16,4 +16,3 @@ class BoardUpdates(Enum):
     CREATE_BOARD = 3
     ADD_PLAYER = 4
     REMOVE_PLAYER = 5
-    

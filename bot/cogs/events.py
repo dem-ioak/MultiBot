@@ -129,8 +129,8 @@ class Events(commands.Cog):
                 allowed = [],
                 hidden = [],
                 is_locked = False,
-                created_at = curr_time,
-                deleted_at = None
+                deleted_at = None,
+                created_at = curr_time
             )
             VCS.insert_one(channel_data.__dict__)
 
@@ -331,8 +331,12 @@ class Events(commands.Cog):
     
     @commands.Cog.listener()
     async def on_guild_channel_create(self, channel):
+        curr_time = datetime.utcnow()
         if isinstance(channel, discord.TextChannel):
-            channel_data_obj = DataClasses.TChannel(channel.id)
+            channel_data_obj = DataClasses.TChannel(
+                _id = channel.id,
+                created_at = curr_time)
+            
             TEXT_CHANNELS.insert_one(channel_data_obj.__dict__)
             # TODO: Banished stuff
 

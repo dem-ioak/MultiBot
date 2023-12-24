@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from datetime import datetime
-from enum import Enum
 
 from util.enums import EventType
 
@@ -28,7 +27,7 @@ class WrappedUser:
     image_count : int = 0
     gif_count : int = 0
     everyone_pings : int = 0
-    
+
     # polls_voted_on : list
     # vc_names : list
     # vcs_created : int = 0
@@ -57,10 +56,12 @@ class VChannel:
 @dataclass
 class TChannel:
     _id : int
+    created_at : datetime
     deleted_author : int = -1
     deleted_content : str = ""
     edited_author : int = -1
     edited_content : str = ""
+    deleted_at : datetime = None
 
 @dataclass
 class Server:
