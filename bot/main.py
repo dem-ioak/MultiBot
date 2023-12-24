@@ -5,6 +5,7 @@ import os
 from discord.ext import commands
 from dotenv import load_dotenv
 from discord.app_commands import AppCommandError
+import traceback
 
 load_dotenv()
 CLIENT_KEY = os.getenv("CLIENT_KEY")
@@ -26,11 +27,13 @@ class MyBot(commands.Bot):
         for filename in os.listdir('bot/cogs'):
             if filename.endswith(".py") and "__init__" not in filename:
                 try:
-                    print(filename)
                     await self.load_extension(f"cogs.{filename[:-3]}")
                 except Exception as e:
-                    print(e)
+                    #print(traceback.format_exc())
                     continue
+    
+    async def on_error(self, event, *args, **kwargs):
+        print(traceback.format_exc())
 
 client = MyBot()
 async def main():

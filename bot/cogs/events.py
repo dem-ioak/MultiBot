@@ -28,10 +28,12 @@ class Events(commands.Cog):
     async def on_guild_join(self, server):
         """Handle DB Operations when bot joins a server"""
         guild_id = server.id
-        server_data = SERVERS.find_one({"_id" : guild_id})
+        server_data = SERVERS.find_one({"_id" : guild_id})   
+        curr_time = datetime.utcnow()    
 
         # Add server if it does not exist
         if server_data is None:
+        
             server_obj = DataClasses.Server(
                 _id = guild_id,
                 auto_roles = [],
@@ -44,13 +46,14 @@ class Events(commands.Cog):
             if not user.bot:
                 primary_key = {"guild_id" : guild_id, "user_id"  : user.id} 
                 user_data = USERS.find_one({ "_id" : primary_key })
-                if user_data is not None:
-                    continue
+                wrapped_data = WRAPPED.find_one({"_id" : primary_key})
+                if user_data is  None:
+                    user_obj = DataClasses.User(_id = primary_key)
+                    USERS.insert_one(user_obj.__dict__)
 
-                user_obj = DataClasses.User(_id = primary_key)
-                USERS.insert_one(user_obj.__dict__)
-
-                # TODO: Wrapped User
+                if wrapped_data is None:
+                    wrapped_obj = DataClasses.WrappedUser(_id = primary_key, user_pings= {"count" : 0})
+                    WRAPPED.insert_one(wrapped_obj.__dict__)
         
         # Add every text channel in the server to data
         for t_channel in server.text_channels:
@@ -58,7 +61,9 @@ class Events(commands.Cog):
             if t_channel_data is not None:
                 continue
 
-            t_channel_obj = DataClasses.TChannel(t_channel.id)
+            t_channel_obj = DataClasses.TChannel(
+                _id = t_channel.id,
+                created_at = curr_time)
             TEXT_CHANNELS.insert_one(t_channel_obj.__dict__)
     
     @commands.Cog.listener()
@@ -234,7 +239,7 @@ class Events(commands.Cog):
                 
                 USERS.update_one(
                     user_data,
-                    {"set" : {
+                    {"$set" : {
                         "xp" : updated_xp,
                         "level" : current_level
                     }}
@@ -274,7 +279,7 @@ class Events(commands.Cog):
         guild_id = message.guild.id
         user_id = message.author.id
         channel_id = message.channel.id
-        server_data = SERVERS.find({"_id" : guild_id})
+        server_data = SERVERS.find_one({"_id" : guild_id})
         channel_data = TEXT_CHANNELS.find_one({"_id" : channel_id})
         member = message.author
         if channel_data is not None:
@@ -300,7 +305,7 @@ class Events(commands.Cog):
         guild_id = before.guild.id
         user_id = before.author.id
         channel_id = before.channel.id
-        server_data = SERVERS.find({"_id" : guild_id})
+        server_data = SERVERS.find_one({"_id" : guild_id})
         channel_data = TEXT_CHANNELS.find_one({"_id" : channel_id})
         member = before.author     
         if channel_data is not None:
@@ -322,7 +327,7 @@ class Events(commands.Cog):
         collection = TEXT_CHANNELS if isinstance(channel, discord.TextChannel) else VCS
         channel_data = collection.find_one({"_id" : channel.id})
         if channel_data is not None:
-            collection.update(
+            collection.update_one(
                     channel_data,
                     {"$set" : {
                         "deleted_at" : curr_time

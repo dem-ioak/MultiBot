@@ -5,7 +5,7 @@ from datetime import datetime, time
 
 # MongoDB Stuff
 mongo_connection = MongoDBConnection()
-cluster = mongo_connection.get_cluster("discord")
+cluster = mongo_connection.get_mongo_client()["discord"]
 SERVERS = cluster["test_servers"]
 USERS = cluster["test_users"]
 TEXT_CHANNELS = cluster["test_textchannels"]

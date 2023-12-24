@@ -21,6 +21,7 @@ class MongoDBConnection:
         try:
             return self._instance[name]
         except Exception as e:
+            print(e)
             return None
 
 # __init__

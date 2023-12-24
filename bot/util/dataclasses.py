@@ -68,7 +68,6 @@ class Server:
     _id : int
     auto_roles : list
     vibe_gifs : list
-    toc : dict
     banished_id : int = -1
 
     vibe_id : int = -1
