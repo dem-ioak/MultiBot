@@ -10,7 +10,7 @@ class Moderation(commands.Cog):
         self.client = client
     
     @app_commands.command(description = "Add to this servers auto roles")
-    async def autor(self, interaction : discord.Interation, role : discord.Role):
+    async def autor(self, interaction : discord.Interaction, role : discord.Role):
         guild_id = interaction.guild.id
         server_data = SERVERS.find_one({"_id" : guild_id})
         SERVERS.update_one(server_data,
@@ -22,13 +22,14 @@ class Moderation(commands.Cog):
         )
         await interaction.response.send_message(embed = embed)
     
-    @app_commands.command(description = "Set a channel to use certain bot features.")
-    @app_commands.choices(channels = [
+    @app_commands.command()
+    @app_commands.describe(channel = "Select a channel")
+    @app_commands.choices(channel = [
         Choice(name = "Good Vibes", value = "vibe"),
         Choice(name = "Logs", value = "logs"),
         Choice(name = "Polls", value = "polls")
     ])
-    async def set_channel(interaction : discord.Interaction, choices : Choice[int]):
+    async def set_channel(self, interaction : discord.Interaction, channel : Choice[str]):
         pass
     
 

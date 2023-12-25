@@ -1,3 +1,4 @@
 .env
 util/constants.py
+bot/logs
 cog_template.py

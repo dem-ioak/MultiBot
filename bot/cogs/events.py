@@ -75,7 +75,21 @@ class Events(commands.Cog):
                 _id = t_channel.id,
                 created_at = curr_time)
             TEXT_CHANNELS.insert_one(t_channel_obj.__dict__)
-            data_logger.info(TCHANNEL_DATA_ADD.format(t_channel.id, guild_id))
+            data_logger.info(CHANNEL_DATA_ADD.format("TextChannel", t_channel.id, t_channel.name, guild_id))
+        
+        for v_channel in server.voice_channels:
+            t_channel_data = TEXT_CHANNELS.find_one({"_id" : v_channel.id})
+            if t_channel_data is not None:
+                continue
+
+            v_channel_obj = DataClasses.VChannel(
+                _id = v_channel.id,
+                created_at = curr_time)
+            VCS.insert_one(v_channel_obj.__dict__)
+            data_logger.info(CHANNEL_DATA_ADD.format("VoiceChannel", t_channel.id, v_channel.name, guild_id))
+
+
+            
     
     @commands.Cog.listener()
     async def on_member_join(self, member):
@@ -342,9 +356,12 @@ class Events(commands.Cog):
     
     @commands.Cog.listener()
     async def on_guild_channel_delete(self, channel):
-        event_logger.log(CHANNEL_DELETE.format(channel.id, channel.guild.id))
+        is_text = isinstance(channel, discord.TextChannel)
+        title = "TextChannel" if is_text else "VoiceChannel"
+        event_logger.info(CHANNEL_DELETE.format(title, channel.id, channel.name, channel.guild.id))
+
         curr_time = datetime.utcnow()
-        collection = TEXT_CHANNELS if isinstance(channel, discord.TextChannel) else VCS
+        collection = TEXT_CHANNELS if is_text else VCS
         channel_data = collection.find_one({"_id" : channel.id})
         if channel_data is not None:
             collection.update_one(
@@ -356,7 +373,7 @@ class Events(commands.Cog):
     
     @commands.Cog.listener()
     async def on_guild_channel_create(self, channel):
-        event_logger.log(CHANNEL_CREATE.format(channel.id, channel.guild.id))
+        event_logger.info(CHANNEL_CREATE.format("TextChannel", channel.id, channel.name, channel.guild.id))
         curr_time = datetime.utcnow()
         if isinstance(channel, discord.TextChannel):
             channel_data_obj = DataClasses.TChannel(
@@ -364,6 +381,8 @@ class Events(commands.Cog):
                 created_at = curr_time)
             
             TEXT_CHANNELS.insert_one(channel_data_obj.__dict__)
+            data_logger.info(CHANNEL_DATA_ADD.format("TextChannel", channel.id, channel.name, channel.guild.id))
+            
             # TODO: Banished stuff
 
 

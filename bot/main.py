@@ -15,16 +15,19 @@ APPLICATION_ID = os.getenv("APPLICATION_ID")
 formatter = logging.Formatter("[%(levelname)s] %(asctime)s - %(message)s")
 def configure_logger(name, level, filename):
     """Configure custom logger with given attributes"""
+
+    LOG_DIR = "bot/logs/"
+
     logger = logging.getLogger(name)
     logger.setLevel(level)
-    handler = logging.FileHandler(filename)
+    handler = logging.FileHandler(LOG_DIR + filename)
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
 configs = [
-    {"name" : "events", "level" : logging.INFO, "filename" : "logs/events.log"},
-    {"name" : "errors", "level" : logging.DEBUG, "filename" : "logs/errors.log"},
-    {"name" : "data", "level" : logging.INFO, "filename" : "logs/data.log"}
+    {"name" : "events", "level" : logging.INFO, "filename" : "events.log"},
+    {"name" : "errors", "level" : logging.DEBUG, "filename" : "errors.log"},
+    {"name" : "data", "level" : logging.INFO, "filename" : "data.log"}
 ]
 
 for config in configs:
@@ -51,7 +54,7 @@ class MyBot(commands.Bot):
                     await self.load_extension(f"cogs.{filename[:-3]}")
                     event_logger.info(f"Successfully loaded cog {filename}")
                 except Exception as e:
-                    error_logger.error(f"Failed to load cog {filename} with Exception {e}", exc_info = True)
+                    error_logger.error(f"Failed to load cog {filename} with Exception {e}")
                     continue
     
     async def on_error(self, event, *args, **kwargs):
