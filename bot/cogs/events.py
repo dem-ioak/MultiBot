@@ -15,6 +15,7 @@ import logging
 
 event_logger = logging.getLogger("events")
 data_logger = logging.getLogger("data")
+error_logger = logging.getLogger("errors")
 
 class Events(commands.Cog):
     def __init__(self, client):
@@ -125,6 +126,7 @@ class Events(commands.Cog):
             try:
                 await member.add_roles(role)
             except Exception as e:
+                error_logger.error(f"Error occured when adding roles: {e}")
                 continue
 
         wrapped_data = WRAPPED.find_one({"_id" : primary_key})
@@ -142,7 +144,7 @@ class Events(commands.Cog):
         guild_name = member.guild.name
         user_id = member.id
         event_logger.info(USER_LEFT_SERVER.format(user_id, (guild_id, guild_name)))
-        pass
+
 
     # Voice State
     @commands.Cog.listener()
@@ -234,11 +236,12 @@ class Events(commands.Cog):
             documents[i]["event_type"] = event_type.value
         
         # Update Data, archive if needed
-        VC_EVENTS.insert_many(documents)
-        limit, size = get_size_and_limit()
-        if size / limit > .9:
-            data_logger.info("Archiving vc_event data to prevent overflow")
-            archive_event_data()
+        if documents:
+            VC_EVENTS.insert_many(documents)
+            limit, size = get_size_and_limit()
+            if size / limit > .9:
+                data_logger.info("Archiving vc_event data to prevent overflow")
+                archive_event_data()
     
     @commands.Cog.listener()
     async def on_message(self, message):

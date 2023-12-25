@@ -45,21 +45,24 @@ class MyBot(commands.Bot):
         )
     
     async def setup_hook(self):
-        cogs_failed = await self.load_cogs()
+        cog_count, cogs_loaded = await self.load_cogs()
         await self.tree.sync()
-        event_logger.info(f"Bot is Online: {cogs_failed} Cog Failures")
+        event_logger.info(f"Bot is Online: {cogs_loaded}/{cog_count} Cogs Successfully Loaded")
 
     async def load_cogs(self):
         count = 0
+        success = 0
         for filename in os.listdir('bot/cogs'):
             if filename.endswith(".py") and "__init__" not in filename:
+                count += 1
                 try:
                     await self.load_extension(f"cogs.{filename[:-3]}")
+                    success += 1
                 except Exception as e:
                     error_logger.error(f"Failed to load cog {filename} with Exception {e}", exc_info = True)
-                    count += 1
+                    
                     continue
-        return count
+        return count, success
 
     async def on_error(self, *args, **kwargs):
         error_logger.error("Error Occured", exc_info=True)

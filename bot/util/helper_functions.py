@@ -32,6 +32,30 @@ def get_size_and_limit():
     limit, size = coll_stats["storageSize"], coll_stats["size"]
     return limit, size
 
+def json_extract(obj, key, val):
+    """Recursively fetch values from nested JSON."""
+    arr = []
+
+    def extract(obj, arr, key, val):
+        """Recursively search for values of key in JSON tree."""
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                if isinstance(v, (dict, list)):
+                    extract(v, arr, key, val)
+                elif k == key:
+                    try:
+                        if obj["artist"]["name"].lower() == val:              
+                            arr.append((obj["name"], obj["playcount"]))
+                    except KeyError:
+                        continue
+        elif isinstance(obj, list):
+            for item in obj:
+                extract(item, arr, key, val)
+        return arr
+
+    values = extract(obj, arr, key, val)
+    return values
+
 
 
 
