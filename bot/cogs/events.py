@@ -9,7 +9,12 @@ from discord.ext import commands, tasks
 from util.constants import SERVERS, USERS, TEXT_CHANNELS, VCS, WRAPPED, VC_EVENTS, LEVEL_UP
 from util.enums import EventType
 from util.helper_functions import leveled_up
+from util.log_messages import *
 
+import logging
+
+event_logger = logging.getLogger("events")
+data_logger = logging.getLogger("data")
 
 class Events(commands.Cog):
     def __init__(self, client):
@@ -28,6 +33,8 @@ class Events(commands.Cog):
     async def on_guild_join(self, server):
         """Handle DB Operations when bot joins a server"""
         guild_id = server.id
+        event_logger.info(GUILD_JOIN.format(guild_id))
+
         server_data = SERVERS.find_one({"_id" : guild_id})   
         curr_time = datetime.utcnow()    
 
@@ -40,6 +47,7 @@ class Events(commands.Cog):
                 vibe_gifs = []
             )
             SERVERS.insert_one(server_obj.__dict__)
+            data_logger.info(GUILD_DATA_ADD.format(guild_id))
         
         # Add each user in the server to data
         for user in server.members:
@@ -50,10 +58,12 @@ class Events(commands.Cog):
                 if user_data is  None:
                     user_obj = DataClasses.User(_id = primary_key)
                     USERS.insert_one(user_obj.__dict__)
+                    data_logger.info(USER_DATA_ADD.format(user.id, guild_id))
 
                 if wrapped_data is None:
                     wrapped_obj = DataClasses.WrappedUser(_id = primary_key, user_pings= {"count" : 0})
                     WRAPPED.insert_one(wrapped_obj.__dict__)
+                    data_logger.info(WRAPPED_DATA_ADD.format(user.id, guild_id))
         
         # Add every text channel in the server to data
         for t_channel in server.text_channels:
@@ -65,12 +75,15 @@ class Events(commands.Cog):
                 _id = t_channel.id,
                 created_at = curr_time)
             TEXT_CHANNELS.insert_one(t_channel_obj.__dict__)
+            data_logger.info(TCHANNEL_DATA_ADD.format(t_channel.id, guild_id))
     
     @commands.Cog.listener()
     async def on_member_join(self, member):
         """Handle DB Operations when a user joins a server the bot is in"""
         guild_id = member.guild.id
         user_id = member.id
+        event_logger.info(USER_JOIN_SERVER.format(user_id, guild_id))
+
         primary_key = {"guild_id" : guild_id, "user_id" : user_id}
         server_data = SERVERS.find_one({"_id" : guild_id})
         user_data = USERS.find_one({"_id" : primary_key})
@@ -79,6 +92,7 @@ class Events(commands.Cog):
         if user_data is None:
             user_obj = DataClasses.User(_id = primary_key)
             USERS.insert_one(user_obj.__dict__)
+            data_logger.info(USER_DATA_ADD.format(user_id, guild_id))
 
         # Log join event if server has a `logs` channel
         if server_data["logs"] != -1:
@@ -99,9 +113,13 @@ class Events(commands.Cog):
                 user_pings = {"count" : 0}
             )
             WRAPPED.insert_one(wrapped_user_obj.__dict__)
+            data_logger.info(WRAPPED_DATA_ADD.format(user_id, guild_id))
     
     @commands.Cog.listener()
     async def on_member_remove(self, member):
+        guild_id = member.guild.id
+        user_id = member.id
+        event_logger.info(USER_LEFT_SERVER.format(user_id, guild_id))
         pass
 
     # Voice State
@@ -278,6 +296,7 @@ class Events(commands.Cog):
         
         guild_id = message.guild.id
         user_id = message.author.id
+
         channel_id = message.channel.id
         server_data = SERVERS.find_one({"_id" : guild_id})
         channel_data = TEXT_CHANNELS.find_one({"_id" : channel_id})
@@ -323,6 +342,7 @@ class Events(commands.Cog):
     
     @commands.Cog.listener()
     async def on_guild_channel_delete(self, channel):
+        event_logger.log(CHANNEL_DELETE.format(channel.id, channel.guild.id))
         curr_time = datetime.utcnow()
         collection = TEXT_CHANNELS if isinstance(channel, discord.TextChannel) else VCS
         channel_data = collection.find_one({"_id" : channel.id})
@@ -336,6 +356,7 @@ class Events(commands.Cog):
     
     @commands.Cog.listener()
     async def on_guild_channel_create(self, channel):
+        event_logger.log(CHANNEL_CREATE.format(channel.id, channel.guild.id))
         curr_time = datetime.utcnow()
         if isinstance(channel, discord.TextChannel):
             channel_data_obj = DataClasses.TChannel(

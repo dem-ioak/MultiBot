@@ -1,0 +1,10 @@
+# Log Messages
+GUILD_JOIN = "Joined server {}"
+GUILD_DATA_ADD = "Added server {} to data"
+USER_JOIN_SERVER = "User {} join server {}"
+USER_LEFT_SERVER = "User {} left server {}"
+USER_DATA_ADD = "User {} added to data for server {}"
+WRAPPED_DATA_ADD = "User {} added to wrapped data for server {}"
+TCHANNEL_DATA_ADD = "TextChannel {} added to data in server {}"
+CHANNEL_DELETE = "Channel {} deleted from server {}"
+CHANNEL_CREATE = "Channel {} created in server {}"

@@ -14,6 +14,7 @@ WRAPPED = cluster["test_wrapped"]
 VC_EVENTS = cluster["test_vcevents"]
 MY_USER_ID = 739618992393682974
 
+
 # Bot Messages
 LEVEL_UP = ":tada: Congratulations! You just ranked up to level {}!"
 JOINED_SERVER = "{} joined, there are now **{}** members in this server"
