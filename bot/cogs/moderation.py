@@ -31,7 +31,8 @@ class Moderation(commands.Cog):
         Choice(name = "Good Vibes", value = "vibe"),
         Choice(name = "Logs", value = "logs"),
         Choice(name = "Polls", value = "polls"),
-        Choice(name = "AFK Corner", value = "afk_corner")
+        Choice(name = "AFK Corner", value = "afk_corner"),
+        Choice(name = "Join to Create", value = "join_to_create")
     ])
     async def set_channel(self, interaction : discord.Interaction, channel_type : Choice[str], channel_id : str):
         guild_id = interaction.guild.id
@@ -41,8 +42,10 @@ class Moderation(commands.Cog):
         text_channel_ids = set(channel.id for channel in interaction.guild.text_channels)
         voice_channel_ids = set(channel.id for channel in interaction.guild.voice_channels)
 
-        invalid_text_channel = choice_value != "afk_corner" and channel_id not in text_channel_ids
-        invalid_voice_channel = choice_value == "afk_corner" and channel_id not in voice_channel_ids
+        voice_categories = ["afk_corner", "join_to_create"]
+
+        invalid_text_channel = choice_value not in voice_categories and channel_id not in text_channel_ids
+        invalid_voice_channel = choice_value in voice_categories and channel_id not in voice_channel_ids
 
         if invalid_text_channel or invalid_voice_channel:
             await interaction.response.send_message(ephemeral=True, content = "❌")

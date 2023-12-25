@@ -60,6 +60,9 @@ class MyBot(commands.Bot):
                     count += 1
                     continue
         return count
+
+    async def on_error(self, *args, **kwargs):
+        error_logger.error("Error Occured", exc_info=True)
     
 client = MyBot()
 

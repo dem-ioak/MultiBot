@@ -33,7 +33,8 @@ class Events(commands.Cog):
     async def on_guild_join(self, server):
         """Handle DB Operations when bot joins a server"""
         guild_id = server.id
-        event_logger.info(GUILD_JOIN.format(guild_id))
+        guild_name = server.name
+        event_logger.info(GUILD_JOIN.format((guild_id, guild_name)))
 
         server_data = SERVERS.find_one({"_id" : guild_id})   
         curr_time = datetime.utcnow()    
@@ -47,7 +48,7 @@ class Events(commands.Cog):
                 vibe_gifs = []
             )
             SERVERS.insert_one(server_obj.__dict__)
-            data_logger.info(GUILD_DATA_ADD.format(guild_id))
+            data_logger.info(GUILD_DATA_ADD.format((guild_id, guild_name)))
         
         # Add each user in the server to data
         for user in server.members:
@@ -58,12 +59,12 @@ class Events(commands.Cog):
                 if user_data is  None:
                     user_obj = DataClasses.User(_id = primary_key)
                     USERS.insert_one(user_obj.__dict__)
-                    data_logger.info(USER_DATA_ADD.format(user.id, guild_id))
+                    data_logger.info(USER_DATA_ADD.format(user.id, (guild_id, guild_name)))
 
                 if wrapped_data is None:
                     wrapped_obj = DataClasses.WrappedUser(_id = primary_key, user_pings= {"count" : 0})
                     WRAPPED.insert_one(wrapped_obj.__dict__)
-                    data_logger.info(WRAPPED_DATA_ADD.format(user.id, guild_id))
+                    data_logger.info(WRAPPED_DATA_ADD.format(user.id, (guild_id, guild_name)))
         
         # Add every text channel in the server to data
         for t_channel in server.text_channels:
@@ -75,7 +76,7 @@ class Events(commands.Cog):
                 _id = t_channel.id,
                 created_at = curr_time)
             TEXT_CHANNELS.insert_one(t_channel_obj.__dict__)
-            data_logger.info(CHANNEL_DATA_ADD.format("TextChannel", t_channel.id, t_channel.name, guild_id))
+            data_logger.info(CHANNEL_DATA_ADD.format("TextChannel", t_channel.id, t_channel.name, (guild_id, guild_name)))
         
         for v_channel in server.voice_channels:
             t_channel_data = TEXT_CHANNELS.find_one({"_id" : v_channel.id})
@@ -91,7 +92,7 @@ class Events(commands.Cog):
                 is_locked = None,
                 created_at = curr_time)
             VCS.insert_one(v_channel_obj.__dict__)
-            data_logger.info(CHANNEL_DATA_ADD.format("VoiceChannel", t_channel.id, v_channel.name, guild_id))
+            data_logger.info(CHANNEL_DATA_ADD.format("VoiceChannel", t_channel.id, v_channel.name, (guild_id, guild_name)))
 
 
             
@@ -100,8 +101,9 @@ class Events(commands.Cog):
     async def on_member_join(self, member):
         """Handle DB Operations when a user joins a server the bot is in"""
         guild_id = member.guild.id
+        guild_name = member.guild.name
         user_id = member.id
-        event_logger.info(USER_JOIN_SERVER.format(user_id, guild_id))
+        event_logger.info(USER_JOIN_SERVER.format(user_id, (guild_id, guild_name)))
 
         primary_key = {"guild_id" : guild_id, "user_id" : user_id}
         server_data = SERVERS.find_one({"_id" : guild_id})
@@ -111,7 +113,7 @@ class Events(commands.Cog):
         if user_data is None:
             user_obj = DataClasses.User(_id = primary_key)
             USERS.insert_one(user_obj.__dict__)
-            data_logger.info(USER_DATA_ADD.format(user_id, guild_id))
+            data_logger.info(USER_DATA_ADD.format(user_id, (guild_id, guild_name)))
 
         # Log join event if server has a `logs` channel
         if server_data["logs"] != -1:
@@ -132,51 +134,30 @@ class Events(commands.Cog):
                 user_pings = {"count" : 0}
             )
             WRAPPED.insert_one(wrapped_user_obj.__dict__)
-            data_logger.info(WRAPPED_DATA_ADD.format(user_id, guild_id))
+            data_logger.info(WRAPPED_DATA_ADD.format(user_id, (guild_id, guild_name)))
     
     @commands.Cog.listener()
     async def on_member_remove(self, member):
         guild_id = member.guild.id
+        guild_name = member.guild.name
         user_id = member.id
-        event_logger.info(USER_LEFT_SERVER.format(user_id, guild_id))
+        event_logger.info(USER_LEFT_SERVER.format(user_id, (guild_id, guild_name)))
         pass
 
     # Voice State
     @commands.Cog.listener()
     async def on_voice_state_update(self, member, before, after):
         guild_id = member.guild.id
+        guild_name = member.guild.name
         user_id = member.id
         server_data = SERVERS.find_one({"_id" : guild_id})
 
-        create_id = server_data["vc_create_id"]
-        category_id = server_data["vc_category_id"]
+        create_id = server_data["join_to_create"]
 
         created_vc = after.channel and after.channel.id == create_id
         changed_vc = before.channel != after.channel
 
         curr_time = datetime.utcnow()
-
-        # Add channel to data if it is a new vc
-        if created_vc:
-            category = discord.utils.get(member.guild.categories, id = category_id)
-            created_channel = await member.guild.create_voice_channel(
-                name = f"{member.name}'s VC",
-                category = category
-            )
-            await member.move_to(created_channel)
-            event_logger.info(USER_CREATE_VC.format(user_id, guild_id))
-
-            channel_data = DataClasses.VChannel(
-                _id = created_channel.id,
-                owner = user_id,
-                denied = [],
-                allowed = [],
-                hidden = [],
-                is_locked = False,
-                deleted_at = None,
-                created_at = curr_time
-            )
-            VCS.insert_one(channel_data.__dict__)
 
         # Delete VC if empty after leaving
         if before.channel:
@@ -195,60 +176,64 @@ class Events(commands.Cog):
 
         # Start a stream
         if not before.self_stream and after.self_stream:
-            data_logger.info(USER_START_STREAM.format(user_id, before.channel.id, guild_id))
-            events.append(
-                DataClasses.VCEvent(
-                    guild_id, 
-                    user_id,
-                    curr_time, 
-                    EventType.START_STREAM, 
-                    after.channel.id))
+            data_logger.info(USER_START_STREAM.format(user_id, (guild_id, guild_name)))
+            events.append(DataClasses.VCEvent(guild_id, user_id,curr_time, EventType.START_STREAM, after.channel.id))
         
         # End a stream
         if before.self_stream and (after.channel != before.channel or not after.self_stream):
-            data_logger.info(USER_END_STREAM.format(user_id, before.channel.id, guild_id))
-            events.append(
-                DataClasses.VCEvent(
-                    guild_id, 
-                    user_id,
-                    curr_time, 
-                    EventType.END_STREAM, 
-                    (after.channel.id if after.channel else None)))
-
+            data_logger.info(USER_END_STREAM.format(user_id, (guild_id, guild_name)))
+            events.append(DataClasses.VCEvent(guild_id, user_id, curr_time, EventType.END_STREAM, before.channel.id))
 
         # The event that triggered this method was a movement between VCs (or leaving  / joining)
         if changed_vc:
+
             # If you left a VC
-            if before.channel:
-                data_logger.info(USER_LEFT_VC.format(user_id, before.channel.id, guild_id))
+            if before.channel and before.channel.id != create_id:
+                data_logger.info(USER_LEFT_VC.format(user_id, before.channel.id, (guild_id, guild_name)))
                 events.append(
-                    DataClasses.VCEvent(
-                        guild_id,
-                        user_id,
-                        curr_time,
-                        (EventType.LEAVE_VC if before.channel.id != afk_corner else EventType.LEAVE_AFK),
-                        before.channel.id
-                    )
-                )
+                    DataClasses.VCEvent(guild_id,user_id, curr_time, 
+                                       (EventType.LEAVE_VC if before.channel.id != afk_corner else EventType.LEAVE_AFK),
+                                        before.channel.id))
             
             # If you joined a VC
             if after.channel:
-                data_logger.info(USER_JOIN_VC.format(user_id, after.channel.id, guild_id))
-                events.append(
-                    DataClasses.VCEvent(
-                        guild_id,
-                        user_id,
-                        curr_time,
-                        (EventType.JOIN_VC if after.channel.id != afk_corner else EventType.JOIN_AFK),
-                        after.channel.id
+
+                # Add channel to data if it is a new vc
+                if created_vc:
+                    category_id = after.channel.category.id
+                    category = discord.utils.get(member.guild.categories, id = category_id)
+                    created_channel = await member.guild.create_voice_channel(
+                        name = f"{member.name}'s VC",
+                        category = category
                     )
-                )
+                    await member.move_to(created_channel)
+                    channel_data = DataClasses.VChannel(
+                        _id = created_channel.id,
+                        owner = user_id,
+                        denied = [],
+                        allowed = [],
+                        hidden = [],
+                        is_locked = False,
+                        deleted_at = None,
+                        created_at = curr_time
+                    )
+                    data_logger.info(USER_CREATE_VC.format(user_id, (guild_id, guild_name)))
+                    VCS.insert_one(channel_data.__dict__)
+                
+                else:
+                    data_logger.info(USER_JOIN_VC.format(user_id, after.channel.id, (guild_id, guild_name)))
+                    events.append(
+                        DataClasses.VCEvent(guild_id, user_id, curr_time,
+                                        (EventType.JOIN_VC if after.channel.id != afk_corner else EventType.JOIN_AFK),
+                                            after.channel.id))
         
+        # Format Documents
         documents = [event.__dict__ for event in events]
         for i in range(len(documents)):
             event_type = documents[i]["event_type"]
             documents[i]["event_type"] = event_type.value
-            
+        
+        # Update Data, archive if needed
         VC_EVENTS.insert_many(documents)
         limit, size = get_size_and_limit()
         if size / limit > .9:

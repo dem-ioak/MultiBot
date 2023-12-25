@@ -74,11 +74,7 @@ class Server:
     logs_id : int = -1
     polls_id : int = -1
     boards_id : int = -1
-    vc_commands_id : int = -1
-
-    vc_setup : bool = False
-    vc_create_id : int = -1
-    vc_category_id : int = -1
+    join_to_create : int = -1
     afk_corner : int = -1
 
     vibes : bool = True
