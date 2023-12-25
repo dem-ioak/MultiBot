@@ -3,6 +3,9 @@ import os
 from datetime import datetime
 import json
 from bson import ObjectId
+from discord import Embed, Color
+from util.classes import FMUser
+from util.constants import USERS
 
 class JSONEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -32,34 +35,48 @@ def get_size_and_limit():
     limit, size = coll_stats["storageSize"], coll_stats["size"]
     return limit, size
 
-def json_extract(obj, key, val):
-    """Recursively fetch values from nested JSON."""
-    arr = []
+def handle_get_top_call(interaction, target, time, mode):
+    """Handle logic to create embeds for get_top_x calls"""
+    target = target if target else interaction.user
+    time = time.value if time else "Overall"
+    guild_id = interaction.guild.id
+    user_id = target.id
+    primary_key = {"guild_id" : guild_id, "user_id" : user_id}
+    user_data = USERS.find_one({"_id" : primary_key})
+    fm_username = user_data["last_fm"]
 
-    def extract(obj, arr, key, val):
-        """Recursively search for values of key in JSON tree."""
-        if isinstance(obj, dict):
-            for k, v in obj.items():
-                if isinstance(v, (dict, list)):
-                    extract(v, arr, key, val)
-                elif k == key:
-                    try:
-                        if obj["artist"]["name"].lower() == val:              
-                            arr.append((obj["name"], obj["playcount"]))
-                    except KeyError:
-                        continue
-        elif isinstance(obj, list):
-            for item in obj:
-                extract(item, arr, key, val)
-        return arr
+    # Username does not set
+    if not fm_username:
+        return
 
-    values = extract(obj, arr, key, val)
-    return values
+    fm_obj = FMUser(fm_username)
 
-
-
-
-
+    # Username does not exist
+    if not fm_obj.is_valid():
+        return
     
+    funcs = {
+        "artists" : fm_obj.get_top_artists,
+        "albums" : fm_obj.get_top_albums,
+        "tracks" : fm_obj.get_top_tracks
+    }
+
+    description = funcs[mode](time)
+
+    # No data received
+    if not description:
+        return
+    
+    embed = Embed(
+        color = Color.red(), 
+        title = f"{target.name}'s Top {time} Artists",
+        description = description)
+    embed.set_author(name = interaction.user.name, icon_url= interaction.user.avatar.url)
+    return embed
+
+
+
+
+
 
 

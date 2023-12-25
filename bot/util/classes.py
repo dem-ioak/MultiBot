@@ -1,11 +1,35 @@
 import os
 import requests
-from util.helper_functions import json_extract
 
 LAST_FM_KEY = os.getenv("LAST_FM_KEY")
 FM_BASE = "https://ws.audioscrobbler.com/2.0/?method="
 FM_PARAMS = "&user={}&api_key={}&format=json"
 FM_TOP_PARAMS = "&user={}&api_key={}&format=json&period={}"
+
+# Not in `helper_functions` to avoid circular import issue
+def json_extract(obj, key, val):
+    """Recursively fetch values from nested JSON."""
+    arr = []
+
+    def extract(obj, arr, key, val):
+        """Recursively search for values of key in JSON tree."""
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                if isinstance(v, (dict, list)):
+                    extract(v, arr, key, val)
+                elif k == key:
+                    try:
+                        if obj["artist"]["name"].lower() == val:              
+                            arr.append((obj["name"], obj["playcount"]))
+                    except KeyError:
+                        continue
+        elif isinstance(obj, list):
+            for item in obj:
+                extract(item, arr, key, val)
+        return arr
+
+    values = extract(obj, arr, key, val)
+    return values
 
 class FMUser:
     def __init__(self, username):
@@ -54,25 +78,31 @@ class FMUser:
         }
 
     def _get_top_util(self, mode, time = None):
+        """Helper to handle all forms of get_top_x"""
         method = f"user.gettop{mode}s"
         URL = FM_BASE + method + FM_TOP_PARAMS.format(self.username, LAST_FM_KEY, time)
         source = requests.get(URL).json()
         info = source[f"top{mode}s"][mode]
         count = 1
         dct = {}
+        is_artists = mode == "artist"
         for entry in info[:10]:
             a = entry["name"]
+            b = None if is_artists else entry["artist"]["name"]
             playcount = entry["playcount"]
             key = str(count)
             dct[key] = {
                 mode : a,
                 "playcount" : playcount
             }
+            if not is_artists:
+                dct[key]["artist"] = b
             count += 1
 
         return dct
     
     def _construct_string(self, data, is_artists = False):
+        """Construct description strings for embed"""
         result = ""
         n = len(data.keys())
         for i in range(n):
@@ -82,7 +112,7 @@ class FMUser:
                 result += f"`{key}` **{a}** ({b} plays)\n"
             else:
                 a, b, c = data[key].values()
-                result += f"`{key}` **{a}** by **{b}** ({c} plays)\n"
+                result += f"`{key}` **{a}** by **{c}** ({b} plays)\n"
                 
         return result
         
