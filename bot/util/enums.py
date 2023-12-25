@@ -9,8 +9,6 @@ class EventType(Enum):
     START_STREAM = 5
     END_STREAM = 6
 
-
-
 class BoardUpdates(Enum):
     INCREMENT_SCORE = 1
     DECREMENT_SCORE = 2

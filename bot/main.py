@@ -45,22 +45,28 @@ class MyBot(commands.Bot):
         )
     
     async def setup_hook(self):
-        await self.load_cogs()
+        cogs_failed = await self.load_cogs()
+        await self.tree.sync()
+        event_logger.info(f"Bot is Online: {cogs_failed} Cog Failures")
 
     async def load_cogs(self):
+        count = 0
         for filename in os.listdir('bot/cogs'):
             if filename.endswith(".py") and "__init__" not in filename:
                 try:
                     await self.load_extension(f"cogs.{filename[:-3]}")
-                    event_logger.info(f"Successfully loaded cog {filename}")
                 except Exception as e:
                     error_logger.error(f"Failed to load cog {filename} with Exception {e}", exc_info = True)
+                    count += 1
                     continue
+        return count
     
-    async def on_error(self, event, *args, **kwargs):
-        print(traceback.format_exc())
-
 client = MyBot()
+
+@client.tree.error
+async def on_app_command_error(interaction : discord.Interaction, error : AppCommandError):
+    error_logger.error(f"Error while using {interaction.command.name}", exc_info=True)
+
 async def main():
     async with client:
         await client.start(CLIENT_KEY)

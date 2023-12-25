@@ -164,6 +164,8 @@ class Events(commands.Cog):
                 category = category
             )
             await member.move_to(created_channel)
+            event_logger.info(USER_CREATE_VC.format(user_id, guild_id))
+
             channel_data = DataClasses.VChannel(
                 _id = created_channel.id,
                 owner = user_id,
@@ -179,7 +181,7 @@ class Events(commands.Cog):
         # Delete VC if empty after leaving
         if before.channel:
             vc_data = VCS.find_one({"_id" : before.channel.id})
-            if vc_data is not None:
+            if vc_data is not None and vc_data["owner"]:
                 if before.channel.id != create_id:
                     if len(before.channel.members) == 0:
                         await before.channel.delete()
@@ -193,6 +195,7 @@ class Events(commands.Cog):
 
         # Start a stream
         if not before.self_stream and after.self_stream:
+            data_logger.info(USER_START_STREAM.format(user_id, before.channel.id, guild_id))
             events.append(
                 DataClasses.VCEvent(
                     guild_id, 
@@ -203,6 +206,7 @@ class Events(commands.Cog):
         
         # End a stream
         if before.self_stream and (after.channel != before.channel or not after.self_stream):
+            data_logger.info(USER_END_STREAM.format(user_id, before.channel.id, guild_id))
             events.append(
                 DataClasses.VCEvent(
                     guild_id, 
@@ -216,6 +220,7 @@ class Events(commands.Cog):
         if changed_vc:
             # If you left a VC
             if before.channel:
+                data_logger.info(USER_LEFT_VC.format(user_id, before.channel.id, guild_id))
                 events.append(
                     DataClasses.VCEvent(
                         guild_id,
@@ -228,6 +233,7 @@ class Events(commands.Cog):
             
             # If you joined a VC
             if after.channel:
+                data_logger.info(USER_JOIN_VC.format(user_id, after.channel.id, guild_id))
                 events.append(
                     DataClasses.VCEvent(
                         guild_id,
@@ -245,7 +251,6 @@ class Events(commands.Cog):
             
         VC_EVENTS.insert_many(documents)
         limit, size = get_size_and_limit()
-        print(limit, size, size / limit)
         if size / limit > .9:
             data_logger.info("Archiving vc_event data to prevent overflow")
             archive_event_data()
