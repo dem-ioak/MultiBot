@@ -8,7 +8,7 @@ from discord.ext import commands, tasks
 
 from util.constants import SERVERS, USERS, TEXT_CHANNELS, VCS, WRAPPED, VC_EVENTS, LEVEL_UP
 from util.enums import EventType
-from util.helper_functions import leveled_up
+from util.helper_functions import leveled_up, archive_event_data, get_size_and_limit
 from util.log_messages import *
 
 import logging
@@ -84,6 +84,11 @@ class Events(commands.Cog):
 
             v_channel_obj = DataClasses.VChannel(
                 _id = v_channel.id,
+                owner = None,
+                denied = None,
+                allowed = None,
+                hidden = None,
+                is_locked = None,
                 created_at = curr_time)
             VCS.insert_one(v_channel_obj.__dict__)
             data_logger.info(CHANNEL_DATA_ADD.format("VoiceChannel", t_channel.id, v_channel.name, guild_id))
@@ -139,7 +144,7 @@ class Events(commands.Cog):
     # Voice State
     @commands.Cog.listener()
     async def on_voice_state_update(self, member, before, after):
-        guild_id = member.guild_id
+        guild_id = member.guild.id
         user_id = member.id
         server_data = SERVERS.find_one({"_id" : guild_id})
 
@@ -183,7 +188,7 @@ class Events(commands.Cog):
                             {"$set" : {"deleted_at" : curr_time}})
         
         # Wrapped Stuff
-        afk_corner = -1
+        afk_corner = server_data["afk_corner"]
         events = []
 
         # Start a stream
@@ -234,7 +239,16 @@ class Events(commands.Cog):
                 )
         
         documents = [event.__dict__ for event in events]
+        for i in range(len(documents)):
+            event_type = documents[i]["event_type"]
+            documents[i]["event_type"] = event_type.value
+            
         VC_EVENTS.insert_many(documents)
+        limit, size = get_size_and_limit()
+        print(limit, size, size / limit)
+        if size / limit > .9:
+            data_logger.info("Archiving vc_event data to prevent overflow")
+            archive_event_data()
     
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -373,9 +387,9 @@ class Events(commands.Cog):
     
     @commands.Cog.listener()
     async def on_guild_channel_create(self, channel):
-        event_logger.info(CHANNEL_CREATE.format("TextChannel", channel.id, channel.name, channel.guild.id))
         curr_time = datetime.utcnow()
         if isinstance(channel, discord.TextChannel):
+            event_logger.info(CHANNEL_CREATE.format("TextChannel", channel.id, channel.name, channel.guild.id))
             channel_data_obj = DataClasses.TChannel(
                 _id = channel.id,
                 created_at = curr_time)

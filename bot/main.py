@@ -54,7 +54,7 @@ class MyBot(commands.Bot):
                     await self.load_extension(f"cogs.{filename[:-3]}")
                     event_logger.info(f"Successfully loaded cog {filename}")
                 except Exception as e:
-                    error_logger.error(f"Failed to load cog {filename} with Exception {e}")
+                    error_logger.error(f"Failed to load cog {filename} with Exception {e}", exc_info = True)
                     continue
     
     async def on_error(self, event, *args, **kwargs):
