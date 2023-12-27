@@ -49,7 +49,7 @@ class VChannel:
     allowed : list
     hidden : list
     is_locked : bool
-
+    created_by : int
     created_at : datetime
     deleted_at : datetime = None
     

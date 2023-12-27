@@ -91,6 +91,7 @@ class Events(commands.Cog):
                 allowed = None,
                 hidden = None,
                 is_locked = None,
+                created_by = None,
                 created_at = curr_time)
             VCS.insert_one(v_channel_obj.__dict__)
             data_logger.info(CHANNEL_DATA_ADD.format("VoiceChannel", t_channel.id, v_channel.name, (guild_id, guild_name)))
@@ -217,6 +218,7 @@ class Events(commands.Cog):
                         hidden = [],
                         is_locked = False,
                         deleted_at = None,
+                        created_by = user_id,
                         created_at = curr_time
                     )
                     data_logger.info(USER_CREATE_VC.format(user_id, (guild_id, guild_name)))
