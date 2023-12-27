@@ -4,7 +4,8 @@ from datetime import datetime
 import json
 from bson import ObjectId
 from discord import Embed, Color
-from util.classes import FMUser
+
+from util.classes.FMUser import FMUser
 from util.constants import USERS
 
 class JSONEncoder(json.JSONEncoder):
