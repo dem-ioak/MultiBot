@@ -57,7 +57,7 @@ class Events(commands.Cog):
                 primary_key = {"guild_id" : guild_id, "user_id"  : user.id} 
                 user_data = USERS.find_one({ "_id" : primary_key })
                 wrapped_data = WRAPPED.find_one({"_id" : primary_key})
-                if user_data is  None:
+                if user_data is None:
                     user_obj = DataClasses.User(_id = primary_key)
                     USERS.insert_one(user_obj.__dict__)
                     data_logger.info(USER_DATA_ADD.format(user.id, (guild_id, guild_name)))
@@ -389,9 +389,12 @@ class Events(commands.Cog):
             
             TEXT_CHANNELS.insert_one(channel_data_obj.__dict__)
             data_logger.info(CHANNEL_DATA_ADD.format("TextChannel", channel.id, channel.name, channel.guild.id))
-            
             # TODO: Banished stuff
-
+       
+        else:
+            event_logger.info(CHANNEL_CREATE.format("VoiceChannel", channel.id, channel.name, channel.guild.id))
+            
+            
 
 async def setup(client):
     await client.add_cog(Events(client))
