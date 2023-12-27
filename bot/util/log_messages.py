@@ -17,3 +17,5 @@ CHANNEL_DATA_ADD = "{} {} ({}) added to data in server {}"
 CHANNEL_DELETE = "{} {} ({}) deleted from server {}"
 CHANNEL_CREATE = "{} {} ({}) created in server {}"
 CHANNEL_SET = "Set {}'s {} channel to {}"
+
+SNIPE_FAIL = "Attempted to snipe from channel {} in {}, channel not found"
