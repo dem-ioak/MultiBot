@@ -7,7 +7,12 @@ import asyncio
 from util.constants import BOARDS
 from util.helper_functions import board_view_description, board_info_embed, sort_dict, parse_id
 import util.dataclasses as DataClasses
+from util.log_messages import SCORE_INCREMENTED, SCORE_DECREMENTED, BOARD_ADD_USER
 from datetime import datetime
+
+import logging
+
+data_logger = logging.getLogger("data")
 
 BOARD_EMOJIS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
 
@@ -43,13 +48,16 @@ class BoardDropDown(Select):
             user_id = str(user_id)
             if self.mode == "add":
                 players[user_id] = 0
+                data_logger.info(BOARD_ADD_USER.format(
+                    interaction.user.id, user_id, 
+                    self.board["name"], (interaction.guild.id, interaction.guild.name)
+                ))
             else:
                 del players[user_id]
         
         board = self.board
         board["scores"] = players
         embed = board_info_embed(board, self.guild.members)
-        print(self.index)
 
         BOARDS.update_one({"_id" : self.guild.id}, {"$set" : {f"boards.{self.index}.scores" : board["scores"]}})
         await self.message.edit(embed = embed)
@@ -250,6 +258,7 @@ class BoardView(View):
     async def board_increment_score(self, interaction : discord.Interaction, button : discord.ui.Button):
         """Increment a user's score OR add a user to this board"""
         guild_id = interaction.guild.id
+        guild_name = interaction.guild.name
         index = self.selection
         server_boards = BOARDS.find_one({"_id" : guild_id})
         board_data = server_boards["boards"]
@@ -274,11 +283,14 @@ class BoardView(View):
             scores[user_id] += 1
             embed = board_info_embed(board, interaction.guild.members)
             await interaction.response.edit_message(embed = embed)
+            data_logger.info(SCORE_INCREMENTED.format(
+                interaction.user.id, user_id, board["name"], (guild_id, guild_name)))
 
     @discord.ui.button(emoji = "➖", style = discord.ButtonStyle.red, row = 1)
     async def board_decrement_score(self, interaction : discord.Interaction, button : discord.ui.Button):
         """Increment a user's score OR add a user to this board"""
         guild_id = interaction.guild.id
+        guild_name = interaction.guild.name
         index = self.selection
         server_boards = BOARDS.find_one({"_id" : guild_id})
         board_data = server_boards["boards"]
@@ -303,6 +315,8 @@ class BoardView(View):
             scores[user_id] -= 1
             embed = board_info_embed(board, interaction.guild.members)
             await interaction.response.edit_message(embed = embed)
+            data_logger.info(SCORE_DECREMENTED.format(
+                interaction.user.id, user_id, board["name"], (guild_id, guild_name)))
 
 
     
