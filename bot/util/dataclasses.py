@@ -82,6 +82,15 @@ class Server:
     levels : bool = True
 
 @dataclass
+class Board:
+    name : str
+    cursor : int
+    author : int
+    last_edited_time : datetime
+    last_edited_user : int
+    scores : list
+
+@dataclass
 class WatchList:
     _id : int
     message_id : int

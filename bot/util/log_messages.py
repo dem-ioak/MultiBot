@@ -1,6 +1,6 @@
 # Log Messages
-GUILD_JOIN = "Joined server {}"
-GUILD_DATA_ADD = "Added server {} to data"
+GUILD_JOIN = "[BOT_SERVER_JOIN] Joined server {}"
+GUILD_DATA_ADD = "[BOT_SERVER_DATA_ADD] Added server {} to data"
 
 USER_JOIN_SERVER = "[SERVER_JOIN] User {} joined server {}"
 USER_LEFT_SERVER = "[SERVER_LEAVE] {} left server {}"

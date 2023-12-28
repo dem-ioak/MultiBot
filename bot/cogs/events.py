@@ -6,7 +6,7 @@ from datetime import datetime, time, date
 from discord import Embed, Color, Status, Streaming, DMChannel
 from discord.ext import commands, tasks
 
-from util.constants import SERVERS, USERS, TEXT_CHANNELS, VCS, WRAPPED, VC_EVENTS, LEVEL_UP
+from util.constants import SERVERS, USERS, TEXT_CHANNELS, VCS, WRAPPED, VC_EVENTS, LEVEL_UP, BOARDS
 from util.enums import EventType
 from util.helper_functions import leveled_up, archive_event_data, get_size_and_limit
 from util.log_messages import *
@@ -48,8 +48,11 @@ class Events(commands.Cog):
                 auto_roles = [],
                 vibe_gifs = []
             )
+
             SERVERS.insert_one(server_obj.__dict__)
+            BOARDS.insert_one({"_id" : guild_id, "boards" : []})
             data_logger.info(GUILD_DATA_ADD.format((guild_id, guild_name)))
+            
         
         # Add each user in the server to data
         for user in server.members:

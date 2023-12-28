@@ -12,6 +12,7 @@ TEXT_CHANNELS = cluster["test_textchannels"]
 VCS = cluster["test_voicechannels"]
 WRAPPED = cluster["test_wrapped"]
 VC_EVENTS = cluster["test_vcevents"]
+BOARDS = cluster["test_boards"]
 EVENT_ARCHIVE_DIR = "bot/archive/"
 MY_USER_ID = 739618992393682974
 
