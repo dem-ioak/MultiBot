@@ -7,7 +7,7 @@ import asyncio
 from util.constants import BOARDS
 from util.helper_functions import board_view_description, board_info_embed, sort_dict, parse_id
 import util.dataclasses as DataClasses
-from util.log_messages import SCORE_INCREMENTED, SCORE_DECREMENTED, BOARD_ADD_USER
+from util.log_messages import SCORE_INCREMENTED, SCORE_DECREMENTED, BOARD_ADD_USER, BOARD_ADD
 from datetime import datetime
 
 import logging
@@ -65,18 +65,20 @@ class BoardDropDown(Select):
 
 class BoardAddition(Modal):
     """Text-Box Prompt to Insert a New Board"""
-    def __init__(self):
+    def __init__(self, message):
         super().__init__(title = "Board Addition")
         self.input = TextInput(
             label = "What is the name of the board?",
             min_length = 1,
             max_length = 32
         )
+        self.message = message
         self.add_item(self.input)
     
     async def on_submit(self, interaction : discord.Interaction):
         name = self.input.value
         guild_id = interaction.guild.id
+        guild_name = interaction.guild.name
         server_boards = BOARDS.find_one({"_id" : guild_id})
         names = set([board["name"].lower() for board in server_boards["boards"]])
         if name.lower() in names:
@@ -95,10 +97,18 @@ class BoardAddition(Modal):
                                           scores = {})
         
         BOARDS.update_one({"_id" : guild_id}, {"$push" : {"boards" : board_obj.__dict__}})
+        server_boards["boards"].append(board_obj.__dict__)
+        data_logger.info(BOARD_ADD.format(interaction.user.id, name, (guild_id, guild_name)))
+
+        description = board_view_description(guild_id, 1)
+        embed = Embed(title = "Server Boards", description = description, color = Color.red())
+        view = BoardListView(guild_id, interaction.user.id, self.message)
+        await self.message.edit(embed = embed, view = view)
         await interaction.response.send_message(embed = Embed(
                     description= f"Successfully added **{name}** to this servers leaderboards.",
                     color = Color.green()
             ), ephemeral= True)
+        
 
 class BoardViewButton(Button):
     """Selection Numbers on the Options List of Boards"""
@@ -184,7 +194,7 @@ class BoardListView(View):
     @discord.ui.button(style = ButtonStyle.gray, emoji = "➕", row = 2)
     async def add_board(self, interaction : discord.Interaction, button : discord.ui.Button):
         """Send `BoardAddition` Modal to add a new baord"""
-        await interaction.response.send_modal(BoardAddition())
+        await interaction.response.send_modal(BoardAddition(self.message))
     
     async def on_timeout(self) -> None:
         """Remove board data / buttons on view timeout"""

@@ -5,6 +5,7 @@ import os
 from discord.ext import commands
 from dotenv import load_dotenv
 from discord.app_commands import AppCommandError
+from discord import Embed, Color, app_commands
 import traceback
 import logging
 
@@ -71,7 +72,13 @@ client = MyBot()
 
 @client.tree.error
 async def on_app_command_error(interaction : discord.Interaction, error : AppCommandError):
-    error_logger.error(f"Error while using {interaction.command.name}", exc_info=True)
+    if isinstance(error, app_commands.errors.CommandOnCooldown):
+        await interaction.response.send_message(embed = Embed(
+            description= "This command is currently on cooldown, as it can only be used once every 2 minutes.",
+            color = Color.red()
+        ), ephemeral = True)
+    else:
+        error_logger.error(f"Error while using {interaction.command.name}", exc_info=True)
 
 async def main():
     async with client:
