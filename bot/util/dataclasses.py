@@ -88,7 +88,7 @@ class Board:
     author : int
     last_edited_time : datetime
     last_edited_user : int
-    scores : list
+    scores : dict
 
 @dataclass
 class WatchList:

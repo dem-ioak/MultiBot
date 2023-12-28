@@ -6,7 +6,7 @@ from bson import ObjectId
 from discord import Embed, Color
 
 from util.classes.FMUser import FMUser
-from util.constants import USERS
+from util.constants import USERS, BOARDS
 
 class JSONEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -73,6 +73,59 @@ def handle_get_top_call(interaction, target, time, mode):
         title = f"{target.name}'s Top {time} Artists",
         description = description)
     embed.set_author(name = interaction.user.name, icon_url= interaction.user.avatar.url)
+    return embed
+
+def board_view_description(guild_id, page):
+    start = (page - 1) * 5
+    server_boards = BOARDS.find_one({"_id" : guild_id})
+    boards = server_boards["boards"]
+    num_boards = len(boards)
+    desciption = ""
+    for i in range(start, start + 5):
+        if i >= num_boards:
+            break
+        
+        rank = (i % 5) + 1
+        name = boards[i]["name"]
+        desciption += f"`{rank}` **{name}**\n"
+
+    return desciption
+
+def board_info_embed(info, guild_members):
+
+    name = info["name"]
+    cursor = info["cursor"]
+    scores = info["scores"]
+    last_edited_time = info["last_edited_time"]
+    last_edited_user = info["last_edited_user"]
+    player_count = len(scores)
+    embed = Embed(title = name, color = Color.red())
+    description = ""
+    id_to_member = {user.id : user for user in guild_members}
+
+    for rank, user in enumerate(scores.items()):
+        prefix = "👑" if rank == 0 else str(rank + 1)
+        to_add = ""
+        user_id, score = user
+        user_id = int(user_id)
+        if user_id not in id_to_member:
+            continue
+
+        member_obj = id_to_member[user_id]
+        to_add += f"`{prefix}` {member_obj.mention} - {score}"
+        if rank == cursor:
+            to_add += " ⬅️"
+        
+        description += to_add + "\n"
+    
+    description += "`👤` **Add/Remove a player!**"
+    if cursor == player_count:
+        description += " ⬅️"
+
+    footer_text = f"Last edit at {last_edited_time} by "
+    footer_text += id_to_member[last_edited_user].name if last_edited_user in id_to_member else "Unknown"
+    embed.description = description
+    embed.set_footer(text = footer_text)
     return embed
 
 
