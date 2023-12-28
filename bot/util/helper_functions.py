@@ -128,6 +128,13 @@ def board_info_embed(info, guild_members):
     embed.set_footer(text = footer_text)
     return embed
 
+def sort_dict(dictionary):
+    sorted_dict = dict(sorted(dictionary.items(), key=lambda item: (item[1], item[0]), reverse=True))
+    return sorted_dict
+
+def parse_id(x):
+    return int(x[len(x)-18::])
+
 
 
 

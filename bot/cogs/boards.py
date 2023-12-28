@@ -19,7 +19,10 @@ class Boards(commands.Cog):
         guild_id = interaction.guild.id
         embed = Embed(title = "Server Boards", color = Color.red())
         embed.description = board_view_description(guild_id, 1)
-        await interaction.response.send_message(embed = embed, view = BoardListView(guild_id, interaction.user.id))
+        view = BoardListView(guild_id, interaction.user.id, interaction.message)
+        await interaction.response.send_message(embed = embed, view = view)
+        view.message = await interaction.original_response()
+
 
 
 
