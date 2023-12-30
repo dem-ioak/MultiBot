@@ -2,7 +2,6 @@ import discord
 from discord import SelectOption, Embed, Color, ButtonStyle
 from discord.ext import commands
 from discord.ui import Button, View, TextInput, Modal, Select
-import asyncio
 
 from util.constants import BOARDS
 from util.helper_functions import board_view_description, board_info_embed, parse_id

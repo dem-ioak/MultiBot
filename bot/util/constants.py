@@ -13,6 +13,7 @@ VCS = cluster["test_voicechannels"]
 WRAPPED = cluster["test_wrapped"]
 VC_EVENTS = cluster["test_vcevents"]
 BOARDS = cluster["test_boards"]
+WATCHLIST = cluster["watchlist"]
 EVENT_ARCHIVE_DIR = "bot/archive/"
 MY_USER_ID = 739618992393682974
 
@@ -31,17 +32,13 @@ MAGNIFICENT_VIBES_GIF = GOOD_VIBES_DEFAULT_GIF
 MAGNIFICENT_VIBES_MESSAGE = "DAILY ABSOLUTE MAGNIFICENT VIBES @everyone HAVE A GREAT DAY"
 REGULAR_VIBES_MESSAGE = "Daily regular vibes that do not dissipate anything @everyone have a mediocre day"
 REGULAR_VIBES_DEFAULT_MESSAGE = "https://tenor.com/view/elmo-shrug-idk-i-dont-know-who-knows-gif-17348455"
-OWNER_STILL_PRESENT = "{} is still connected to this vc, so it cannot be claimed"
 
-# Arrays
-VALID_CHANNELS = ["vibe", "logs", "polls", "boards"]
-VALID_FEATURES = ["vibes", "auto_chop", "levels"]
 MONTH_DAYS = [-1, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 MONTH_NAMES = [
     "N/A", "January", "February", "March", "April", "May",
     "June", "July", "August", "September", "October", "November", "December" ]
 
-WL_EMOJIS = [-1, "❌", "⏱️", "✅"]
+
 DIRECTIONS = {"left" : "◀", "right" : "▶"}
 
 # Embeds
@@ -58,9 +55,6 @@ SUCCESSFUL_ADD = Embed(description="Successfully added the entry to the watchlis
 FAILED_ADD = Embed(description="Failed to add that entry. Please make sure the curent season is less than the total, and all season fields are numbers", color = Color.red())
 SUCCESSFUL_EDIT = Embed(description="Successfully edited/deleted this entry of the watchlist.", color = Color.yellow())
 FORBIDDEN_COMMAND = Embed(description="You are not allowed to use this command!", color = Color.red())
-USER_NOT_CONNECTED = Embed(description="You must be connected to a vc to use voice commands.", color =  Color.red())
-NOT_OWNER = Embed(description="You are not the owner of this vc!", color = Color.red())
-INVALID_VC = Embed(description="You cannot use voice commands to this voice channel.", color = Color.red())
 
 NO_USERNAME_EMBED = Embed(
     description="You have not yet set your **Last.FM** username! Use `fm set (username)` to get started.",

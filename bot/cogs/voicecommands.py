@@ -15,7 +15,7 @@ class VoiceCommands(commands.Cog):
 
     @app_commands.command(name = "voicecommands")
     async def voicecommands(self, interaction : discord.Interaction):
-        await interaction.response.send_message(embed = VOICE_COMMANDS_EMBED, view = VoiceView(self.client))
+        await interaction.response.send_message(embed = VOICE_COMMANDS_EMBED, view = VoiceView(self.client), ephemeral = True)
 
 async def setup(client):
     await client.add_cog(VoiceCommands(client))
