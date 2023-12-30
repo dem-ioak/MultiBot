@@ -28,7 +28,8 @@ def configure_logger(name, level, filename):
 configs = [
     {"name" : "events", "level" : logging.INFO, "filename" : "events.log"},
     {"name" : "errors", "level" : logging.DEBUG, "filename" : "errors.log"},
-    {"name" : "data", "level" : logging.INFO, "filename" : "data.log"}
+    {"name" : "data", "level" : logging.INFO, "filename" : "data.log"},
+    {"name" : "board", "level" : logging.INFO, "filename" : "boards.log"}
 ]
 
 for config in configs:

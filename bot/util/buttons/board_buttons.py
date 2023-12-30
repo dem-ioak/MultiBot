@@ -7,12 +7,12 @@ import asyncio
 from util.constants import BOARDS
 from util.helper_functions import board_view_description, board_info_embed, sort_dict, parse_id
 import util.dataclasses as DataClasses
-from util.log_messages import SCORE_INCREMENTED, SCORE_DECREMENTED, BOARD_ADD_USER, BOARD_ADD
+from util.log_messages import SCORE_CHANGE, BOARD_ADD_USER, BOARD_ADD
 from datetime import datetime
 
 import logging
 
-data_logger = logging.getLogger("data")
+board_logger = logging.getLogger("board")
 
 BOARD_EMOJIS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
 
@@ -67,7 +67,7 @@ async def handle_score_change(interaction, selection, message, mode):
         
         embed = board_info_embed(board, interaction.guild.members)
         await interaction.response.edit_message(embed = embed)
-        data_logger.info(SCORE_INCREMENTED.format(
+        board_logger.info(SCORE_CHANGE.format(
             interaction.user.id, user_id, board["name"], (guild_id, guild_name)))
     
 
@@ -107,7 +107,7 @@ class BoardDropDown(Select):
                 user_id = str(user_id)
                 if self.mode == "add":
                     new_users.append((user_id, 0))
-                    data_logger.info(BOARD_ADD_USER.format(
+                    board_logger.info(BOARD_ADD_USER.format(
                         interaction.user.id, user_id, 
                         self.board["name"], (interaction.guild.id, interaction.guild.name)
                     ))
@@ -120,11 +120,14 @@ class BoardDropDown(Select):
 
             board = self.board
             board["scores"] = players
+            board["cursor"] = 0
 
             embed = board_info_embed(board, self.guild.members)
-            scores_query = f"boards.{self.index}.scores"
+            base = f"boards.{self.index}."
+            scores_query = base + "scores"
+            cursor_query = base + "cursor"
 
-            BOARDS.update_one({"_id" : self.guild.id}, {"$set" : {scores_query : players}})
+            BOARDS.update_one({"_id" : self.guild.id}, {"$set" : {scores_query : players, cursor_query : 0}})
             await self.message.edit(embed = embed)
             await interaction.response.send_message(content = "✅", ephemeral = True)
         except Exception as e:
@@ -165,7 +168,7 @@ class BoardAddition(Modal):
         
         BOARDS.update_one({"_id" : guild_id}, {"$push" : {"boards" : board_obj.__dict__}})
         server_boards["boards"].append(board_obj.__dict__)
-        data_logger.info(BOARD_ADD.format(interaction.user.id, name, (guild_id, guild_name)))
+        board_logger.info(BOARD_ADD.format(interaction.user.id, name, (guild_id, guild_name)))
 
         description = board_view_description(guild_id, 1)
         embed = Embed(title = "Server Boards", description = description, color = Color.red())

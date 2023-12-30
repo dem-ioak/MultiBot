@@ -20,7 +20,6 @@ CHANNEL_SET = "[CHANNEL_SET] Set {}'s {} channel to {}"
 
 SNIPE_FAIL = "Attempted to snipe from channel {} in {}, channel not found"
 
-SCORE_INCREMENTED = "[BOARD_INCREMENT] User {} Incremented score for user {} ({}) in server {}"
-SCORE_DECREMENTED = "[BOARD_DECREMENT] User {} Decremented score for user {} ({}) in server {}"
+SCORE_CHANGE = "[SCORE_CHANGE] User {} changed score for user {} ({}) in server {}"
 BOARD_ADD_USER = "[BOARD_USER_ADD] User {} added user {} to board ({}) in server {}"
 BOARD_ADD = "[BOARD_ADDITION] User {} created board ({}) in server {}"
