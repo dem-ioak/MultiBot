@@ -5,7 +5,7 @@ from discord.ui import Button, View, TextInput, Modal, Select
 import asyncio
 
 from util.constants import BOARDS
-from util.helper_functions import board_view_description, board_info_embed, sort_dict, parse_id
+from util.helper_functions import board_view_description, board_info_embed, parse_id
 import util.dataclasses as DataClasses
 from util.log_messages import SCORE_CHANGE, BOARD_ADD_USER, BOARD_ADD
 from datetime import datetime
