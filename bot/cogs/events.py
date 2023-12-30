@@ -6,7 +6,7 @@ from datetime import datetime, time, date
 from discord import Embed, Color, Status, Streaming, DMChannel
 from discord.ext import commands, tasks
 
-from util.constants import SERVERS, USERS, TEXT_CHANNELS, VCS, WRAPPED, VC_EVENTS, LEVEL_UP, BOARDS
+from util.constants import SERVERS, USERS, TEXT_CHANNELS, VCS, WRAPPED, VC_EVENTS, LEVEL_UP, BOARDS, WATCHLIST
 from util.enums import EventType
 from util.helper_functions import leveled_up, archive_event_data, get_size_and_limit
 from util.log_messages import *
@@ -51,8 +51,8 @@ class Events(commands.Cog):
 
             SERVERS.insert_one(server_obj.__dict__)
             BOARDS.insert_one({"_id" : guild_id, "boards" : []})
+            WATCHLIST.update_one({"_id" : guild_id}, {"$set" : {"entries" : [], "current_page" : 1}}, upsert = True)
             data_logger.info(GUILD_DATA_ADD.format((guild_id, guild_name)))
-            
         
         # Add each user in the server to data
         for user in server.members:
@@ -79,6 +79,7 @@ class Events(commands.Cog):
             t_channel_obj = DataClasses.TChannel(
                 _id = t_channel.id,
                 created_at = curr_time)
+            
             TEXT_CHANNELS.insert_one(t_channel_obj.__dict__)
             data_logger.info(CHANNEL_DATA_ADD.format("TextChannel", t_channel.id, t_channel.name, (guild_id, guild_name)))
         

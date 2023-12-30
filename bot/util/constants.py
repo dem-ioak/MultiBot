@@ -43,14 +43,12 @@ DIRECTIONS = {"left" : "◀", "right" : "▶"}
 
 # Embeds
 OUT_OF_BOUNDS = Embed(description="❌ Cannot flip to the requested page. This is because the page is out of bounds.")
-WATCHLIST_EMBED = Embed(title="WatchList")
 
 VOICE_COMMANDS_EMBED = Embed(
     title="Voice Channel Commands", 
     description="Use the below buttons to configure your voice channel. These buttons will only function if the user who clicks them is A. Connected to a VC and B. The owner of that VC.",
     color = Color.blue())
 
-WATCHLIST_EMBED.set_footer(text="Use the provided buttons below to make edits to existing watch list entries, or to add and remove listings.")
 SUCCESSFUL_ADD = Embed(description="Successfully added the entry to the watchlist.", color = Color.green())
 FAILED_ADD = Embed(description="Failed to add that entry. Please make sure the curent season is less than the total, and all season fields are numbers", color = Color.red())
 SUCCESSFUL_EDIT = Embed(description="Successfully edited/deleted this entry of the watchlist.", color = Color.yellow())
@@ -85,3 +83,7 @@ OPEN_SECTION_URL = "https://sis.rutgers.edu/soc/api/openSections.json?year=2023&
 COURSES_URL = "https://sis.rutgers.edu/soc/api/courses.json?year=2023&term=9&campus=NB"
 REGISTER_BASE_URL = "https://sims.rutgers.edu/webreg/editSchedule.htm?login=cas&semesterSelection=92023&indexList={}"
 RU_LOGO = r"https://secoora.org/wp-content/uploads/2020/04/rutgers-logo-png-1454920.png"
+
+WATCHLIST_EMBED = Embed(title="WatchList")
+WATCHLIST_EMBED.set_footer(text="Use the provided buttons below to make edits to existing watch list entries, or to add and remove listings.")
+WL_EMOJIS = [-1, "❌", "⏱️", "✅"]

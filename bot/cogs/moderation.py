@@ -28,9 +28,9 @@ class Moderation(commands.Cog):
     
     @app_commands.command(description = "Set a channel to a specific bot feature")
     @app_commands.choices(channel_type = [
-        Choice(name = "Good Vibes", value = "vibe"),
-        Choice(name = "Logs", value = "logs"),
-        Choice(name = "Polls", value = "polls"),
+        Choice(name = "Good Vibes", value = "vibe_id"),
+        Choice(name = "Logs", value = "logs_id"),
+        Choice(name = "Polls", value = "polls_id"),
         Choice(name = "AFK Corner", value = "afk_corner"),
         Choice(name = "Join to Create", value = "join_to_create")
     ])

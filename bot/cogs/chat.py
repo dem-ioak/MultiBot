@@ -2,16 +2,37 @@ import discord
 from discord import Embed, Color, app_commands
 from discord.ext import commands
 
-from util.constants import TEXT_CHANNELS
+from util.constants import TEXT_CHANNELS, SERVERS, POLL_FAIL
 from util.log_messages import SNIPE_FAIL
+from util.buttons.poll_buttons import PollModal
 import logging
 
 error_logger = logging.getLogger("errors")
+NO_SNIPE = Embed(description="There is nothing to snipe in this channel", color = Color.red())
 
 
 class Chat(commands.Cog):
     def __init__(self, client):
         self.client = client
+    
+    @app_commands.command(description = "Create a poll for the server")
+    async def poll(self, interaction : discord.Interaction):
+
+        guild_id = interaction.guild.id
+        user_id = interaction.user.id
+        server_data = SERVERS.find_one({"_id" : guild_id})
+        polls = server_data["polls_id"]
+        if polls != -1:
+            channel = interaction.guild.get_channel(polls)
+            await interaction.response.send_modal(PollModal(self.client, channel))
+
+        else:
+            await interaction.response.send_message(
+                embed = Embed(
+                    description = POLL_FAIL,
+                    color = Color.red()
+                )
+            )
 
     @app_commands.command(description="Display any users avatar.")
     async def avatar(self, interaction : discord.Interaction, user : discord.Member = None):
@@ -44,6 +65,7 @@ class Chat(commands.Cog):
         guild_name = interaction.guild.name
         tc_data = TEXT_CHANNELS.find_one({"_id" : channel_id})
 
+
         # Should never happen, log if does
         if tc_data is None:
             error_logger.error(SNIPE_FAIL.format(channel_id, (guild_id, guild_name)))
@@ -52,12 +74,10 @@ class Chat(commands.Cog):
         
         content = tc_data["deleted_content"]
         author = tc_data["deleted_author"]
-        if author == -1:
-            pass
-
         user = self.client.get_user(author)
-        if user is None:
-            pass
+        if author == -1 or user is None:
+            await interaction.response.send_message(embed = NO_SNIPE, ephemeral = True)
+            return
 
         embed = Embed(
             title = "Sniped Deleted Message",
@@ -82,12 +102,10 @@ class Chat(commands.Cog):
         
         content = tc_data["edited_content"]
         author = tc_data["edited_author"]
-        if author == -1:
-            pass
-
         user = self.client.get_user(author)
-        if user is None:
-            pass
+        if author == -1 or user is None:
+            await interaction.response.send_message(embed = NO_SNIPE, ephemeral = True)
+            return
 
         embed = Embed(
             title = "Sniped Edited Message",

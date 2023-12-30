@@ -4,42 +4,18 @@ from discord.ext import commands
 from discord.ui import Button, View, TextInput, Modal, Select
 from math import ceil
 
-from util.constants import WATCHLIST
+from util.constants import WATCHLIST, WATCHLIST_EMBED
 from util.dataclasses import WatchListEntry
+from util.helper_functions import generate_wl_page
 
-WL_EMOJIS = [-1, "❌", "⏱️", "✅"]
-WATCHLIST_EMBED = Embed(title="WatchList")
 
-WATCHLIST_EMBED.set_footer(text="Use the provided buttons below to make edits to existing watch list entries, or to add and remove listings.")
 SUCCESSFUL_ADD = Embed(description="Successfully added the entry to the watchlist.", color = Color.green())
 FAILED_ADD = Embed(description="Failed to add that entry. Please make sure the curent season is less than the total, and all season fields are numbers", color = Color.red())
 SUCCESSFUL_EDIT = Embed(description="Successfully edited/deleted this entry of the watchlist.", color = Color.yellow())
 OUT_OF_BOUNDS = Embed(description="❌ Cannot flip to the requested page. This is because the page is out of bounds.")
 DIRECTIONS = {"left" : "◀", "right" : "▶"}
 
-def generate_wl_page(page, entries):
-    if len(entries) == 0:
-        return WATCHLIST_EMBED
-    start = 10 * (page - 1)
-    page_count = ceil(len(entries)/10)
-    end = start + 10 if page != page_count else len(entries)
-    ind = start
-    desc = ""
-    title = "Watch List (Page {}/{})".format(page, page_count)
-    for entry in entries[start:end]:
-        name, status, curr, total = entry.values()
-        if curr == None:
-            desc += f"`{ind+1}` " + f"🎥 **{name}** {WL_EMOJIS[status]}" + "\n"
-        else:
-            desc += f"`{ind+1}` " + f"**📺 {name}** (Season {curr}/{total}) {WL_EMOJIS[status]}" + "\n"
-        ind +=1
-    res = Embed(
-        title = title,
-        description = desc.strip(),
-        color = Color.gold()
-    )
-    res.set_footer(text="Use the provided buttons below to make edits to existing watch list entries, or to add and remove listings.")
-    return res
+
 
 def upgrade_wl_entry(entries, ind):
     if not is_upgradeable(entries, ind): 

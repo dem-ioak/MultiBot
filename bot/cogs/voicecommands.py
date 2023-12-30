@@ -13,7 +13,7 @@ class VoiceCommands(commands.Cog):
     def __init__(self, client):
         self.client = client
 
-    @app_commands.command(name = "voicecommands")
+    @app_commands.command(name = "voicecommands", description = "Load interface to modify your voice channel")
     async def voicecommands(self, interaction : discord.Interaction):
         await interaction.response.send_message(embed = VOICE_COMMANDS_EMBED, view = VoiceView(self.client), ephemeral = True)
 

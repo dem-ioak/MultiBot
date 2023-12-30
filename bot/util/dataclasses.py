@@ -73,13 +73,12 @@ class Server:
     vibe_id : int = -1
     logs_id : int = -1
     polls_id : int = -1
-    boards_id : int = -1
     join_to_create : int = -1
     afk_corner : int = -1
 
     vibes : bool = True
     auto_chop : bool = False
-    levels : bool = True
+    levels : bool = False
 
 @dataclass
 class Board:

@@ -4,9 +4,12 @@ from datetime import datetime
 import json
 from bson import ObjectId
 from discord import Embed, Color
+from math import ceil
 
 from util.classes.FMUser import FMUser
-from util.constants import USERS, BOARDS
+from util.constants import USERS, BOARDS, WATCHLIST_EMBED, WL_EMOJIS
+
+
 
 class JSONEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -137,6 +140,30 @@ def sort_dict(dictionary):
 
 def parse_id(x):
     return int(x[len(x)-18::])
+
+def generate_wl_page(page, entries):
+    if len(entries) == 0:
+        return WATCHLIST_EMBED
+    start = 10 * (page - 1)
+    page_count = ceil(len(entries)/10)
+    end = start + 10 if page != page_count else len(entries)
+    ind = start
+    desc = ""
+    title = "Watch List (Page {}/{})".format(page, page_count)
+    for entry in entries[start:end]:
+        name, status, curr, total = entry.values()
+        if curr == None:
+            desc += f"`{ind+1}` " + f"🎥 **{name}** {WL_EMOJIS[status]}" + "\n"
+        else:
+            desc += f"`{ind+1}` " + f"**📺 {name}** (Season {curr}/{total}) {WL_EMOJIS[status]}" + "\n"
+        ind +=1
+    res = Embed(
+        title = title,
+        description = desc.strip(),
+        color = Color.gold()
+    )
+    res.set_footer(text="Use the provided buttons below to make edits to existing watch list entries, or to add and remove listings.")
+    return res
 
 
 
