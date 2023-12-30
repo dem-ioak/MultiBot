@@ -97,23 +97,15 @@ def board_info_embed(info, guild_members):
     cursor = info["cursor"]
     
     scores = info["scores"]
-    cursor_user = None
 
-    # Find the user the cursor is attached too
-    for rank, user in enumerate(scores.items()):
-        if rank == cursor:
-            cursor_user = user
-            break
-
-    sorted_scores = sort_dict(scores)
     last_edited_time = info["last_edited_time"]
     last_edited_user = info["last_edited_user"]
-    player_count = len(scores)
+    player_count = len(scores) - 1
     embed = Embed(title = name, color = Color.red())
     description = ""
     id_to_member = {user.id : user for user in guild_members}
 
-    for rank, user in enumerate(sorted_scores.items()):
+    for rank, user in enumerate(scores):
         prefix = "👑" if rank == 0 else str(rank + 1)
         to_add = ""
         user_id, score = user
@@ -123,7 +115,7 @@ def board_info_embed(info, guild_members):
 
         member_obj = id_to_member[user_id]
         to_add += f"`{prefix}` {member_obj.mention} - {score}"
-        if user == cursor_user:
+        if rank == cursor:
             to_add += " ⬅️"
         
         description += to_add + "\n"
@@ -137,6 +129,7 @@ def board_info_embed(info, guild_members):
     embed.description = description
     embed.set_footer(text = footer_text)
     return embed
+
 
 def sort_dict(dictionary):
     sorted_dict = dict(sorted(dictionary.items(), key=lambda item: (item[1], item[0]), reverse=True))

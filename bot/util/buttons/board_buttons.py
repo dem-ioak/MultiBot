@@ -16,6 +16,62 @@ data_logger = logging.getLogger("data")
 
 BOARD_EMOJIS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
 
+async def handle_cursor_change(interaction, selection, mode):
+    guild_id = interaction.guild.id
+    index = selection
+    server_boards = BOARDS.find_one({"_id" : guild_id})
+    board_data = server_boards["boards"][index]
+    num_players = len(board_data["scores"])
+    cursor = board_data["cursor"]
+
+    
+    change = 1 if mode == "down" else -1
+
+    new_cursor = (cursor + change) % (num_players)
+    update_filter = {"$set" : {f"boards.{index}.cursor" : new_cursor}}
+
+    BOARDS.update_one(server_boards, update_filter)
+
+    board_data["cursor"] = new_cursor
+    embed = board_info_embed(board_data, interaction.guild.members)
+    return embed 
+
+async def handle_score_change(interaction, selection, message, mode):
+    guild_id = interaction.guild.id
+    guild_name = interaction.guild.name
+    index = selection
+    server_boards = BOARDS.find_one({"_id" : guild_id})
+    board_data = server_boards["boards"]
+
+    board = board_data[index]
+    scores = board["scores"]
+    cursor_pos = board["cursor"]
+    if cursor_pos + 1 == len(scores):
+        embed = Embed(description = "👤 Select the player you would like to add")
+        view = View()
+        view.add_item(BoardDropDown(board, interaction.guild, index, mode, message))
+        await interaction.response.send_message(embed = embed, view = view, ephemeral = True)
+
+    else:
+        
+        change = 1 if mode == "add" else -1
+        user_id, curr_score = scores[cursor_pos]
+        scores[cursor_pos][1] =  max(change + curr_score, 0)
+   
+        scores = sorted(scores, key = lambda x : x[1], reverse = True)
+        board["scores"] = scores
+        base = f"boards.{index}."
+        scores_query = base + "scores"
+
+        BOARDS.update_one({"_id" : guild_id}, {"$set" : {scores_query : scores}})
+        
+        embed = board_info_embed(board, interaction.guild.members)
+        await interaction.response.edit_message(embed = embed)
+        data_logger.info(SCORE_INCREMENTED.format(
+            interaction.user.id, user_id, board["name"], (guild_id, guild_name)))
+    
+
+
 class BoardDropDown(Select):
     def __init__(self, board, guild, index, mode, message):
         super().__init__(placeholder = "Select a member of this server", min_values = 1)
@@ -25,7 +81,7 @@ class BoardDropDown(Select):
         self.board = board
         self.guild = guild
         self.message = message
-        players = self.board["scores"]
+        players = set([user_id for user_id, score in self.board["scores"]])
         for user in guild.members:
             if user.bot:
                 continue
@@ -42,26 +98,37 @@ class BoardDropDown(Select):
         self.max_values = len(self.options)
     
     async def callback(self, interaction):
-        players = self.board["scores"]
-        for target in self.values:
-            user_id = parse_id(target)
-            user_id = str(user_id)
-            if self.mode == "add":
-                players[user_id] = 0
-                data_logger.info(BOARD_ADD_USER.format(
-                    interaction.user.id, user_id, 
-                    self.board["name"], (interaction.guild.id, interaction.guild.name)
-                ))
-            else:
-                del players[user_id]
+        try:
+            players = self.board["scores"]
+            new_users = []
+            deleted_users = []
+            for target in self.values:
+                user_id = parse_id(target)
+                user_id = str(user_id)
+                if self.mode == "add":
+                    new_users.append((user_id, 0))
+                    data_logger.info(BOARD_ADD_USER.format(
+                        interaction.user.id, user_id, 
+                        self.board["name"], (interaction.guild.id, interaction.guild.name)
+                    ))
+                else:
+                    deleted_users.append(user_id)
         
-        board = self.board
-        board["scores"] = players
-        embed = board_info_embed(board, self.guild.members)
 
-        BOARDS.update_one({"_id" : self.guild.id}, {"$set" : {f"boards.{self.index}.scores" : board["scores"]}})
-        await self.message.edit(embed = embed)
-        await interaction.response.send_message(content = "✅", ephemeral = True)
+            players += new_users
+            players = sorted([(user, rank) for user, rank in players if user not in deleted_users], key = lambda x : x[1], reverse = True)
+
+            board = self.board
+            board["scores"] = players
+
+            embed = board_info_embed(board, self.guild.members)
+            scores_query = f"boards.{self.index}.scores"
+
+            BOARDS.update_one({"_id" : self.guild.id}, {"$set" : {scores_query : players}})
+            await self.message.edit(embed = embed)
+            await interaction.response.send_message(content = "✅", ephemeral = True)
+        except Exception as e:
+            print(e)
 
 class BoardAddition(Modal):
     """Text-Box Prompt to Insert a New Board"""
@@ -94,7 +161,7 @@ class BoardAddition(Modal):
                                           author = interaction.user.id,
                                           last_edited_time = curr_time,
                                           last_edited_user = interaction.user.id,
-                                          scores = {})
+                                          scores = [(-1, -1)]) # User_id, score
         
         BOARDS.update_one({"_id" : guild_id}, {"$push" : {"boards" : board_obj.__dict__}})
         server_boards["boards"].append(board_obj.__dict__)
@@ -216,40 +283,14 @@ class BoardView(View):
     @discord.ui.button(emoji = "⬆️", style = ButtonStyle.gray, row = 1)
     async def board_curson_up(self, interaction : discord.Interaction, button : discord.ui.Button):
         """Move the cursor on the selected board up"""
-        guild_id = interaction.guild.id
-        index = self.selection
-        server_boards = BOARDS.find_one({"_id" : guild_id})
-        board_data = server_boards["boards"][index]
-        num_players = len(board_data["scores"])
-        cursor = board_data["cursor"]
-        new_cursor = (cursor - 1) % (num_players + 1)
-        update_filter = {"$set" : {f"boards.{index}.cursor" : new_cursor}}
-
-        
-        BOARDS.update_one(server_boards, update_filter)
-
-        board_data["cursor"] = new_cursor
-        embed = board_info_embed(board_data, interaction.guild.members)
+        embed = await handle_cursor_change(interaction, self.selection, "up")
         await interaction.response.edit_message(embed = embed)
 
     
     @discord.ui.button(emoji = "⬇️", style = ButtonStyle.gray, row = 1)
     async def board_curson_down(self, interaction : discord.Interaction, button : discord.ui.Button):
         """Move the cursor on the selected board down"""
-
-        guild_id = interaction.guild.id
-        index = self.selection
-        server_boards = BOARDS.find_one({"_id" : guild_id})
-        board_data = server_boards["boards"][index]
-        num_players = len(board_data["scores"])
-        cursor = board_data["cursor"]
-        new_cursor = (cursor + 1) % (num_players + 1)
-        update_filter = {"$set" : {f"boards.{index}.cursor" : new_cursor}}
-
-        BOARDS.update_one(server_boards, update_filter)
-
-        board_data["cursor"] = new_cursor
-        embed = board_info_embed(board_data, interaction.guild.members)
+        embed = await handle_cursor_change(interaction, self.selection, "down")
         await interaction.response.edit_message(embed = embed)
 
     
@@ -262,71 +303,15 @@ class BoardView(View):
         embed.description = desciption
         await interaction.response.edit_message(embed = embed, view = BoardListView(guild_id, interaction.user.id, self.message))
     
-    # CODE FOR BOTH OF THESE IS EXACTLY THE SAME
-    # I MIGHT PUT IT IN A FUNCTION BUT RIGHT NOW ITS TOO ANNOYING FOR 0 GAIN
     @discord.ui.button(emoji = "➕", style = discord.ButtonStyle.green, row = 1)
     async def board_increment_score(self, interaction : discord.Interaction, button : discord.ui.Button):
         """Increment a user's score OR add a user to this board"""
-        guild_id = interaction.guild.id
-        guild_name = interaction.guild.name
-        index = self.selection
-        server_boards = BOARDS.find_one({"_id" : guild_id})
-        board_data = server_boards["boards"]
-
-        board = board_data[index]
-        scores = board["scores"]
-        cursor_pos = board["cursor"]
-        if cursor_pos == len(scores):
-            embed = Embed(description = "👤 Select the player you would like to add")
-            view = View()
-            view.add_item(BoardDropDown(board, interaction.guild, index, "add", self.message))
-            await interaction.response.send_message(embed = embed, view = view, ephemeral = True)
-        else:
-            user_id = None
-            for idx, val in enumerate(scores):
-                if idx == cursor_pos:
-                    user_id = val
-            
-            
-            BOARDS.update_one(server_boards, {"$inc" : {f"boards.{index}.scores.{user_id}" : 1}})
-
-            scores[user_id] += 1
-            embed = board_info_embed(board, interaction.guild.members)
-            await interaction.response.edit_message(embed = embed)
-            data_logger.info(SCORE_INCREMENTED.format(
-                interaction.user.id, user_id, board["name"], (guild_id, guild_name)))
+        await handle_score_change(interaction, self.selection, self.message, "add")
 
     @discord.ui.button(emoji = "➖", style = discord.ButtonStyle.red, row = 1)
     async def board_decrement_score(self, interaction : discord.Interaction, button : discord.ui.Button):
         """Increment a user's score OR add a user to this board"""
-        guild_id = interaction.guild.id
-        guild_name = interaction.guild.name
-        index = self.selection
-        server_boards = BOARDS.find_one({"_id" : guild_id})
-        board_data = server_boards["boards"]
-
-        board = board_data[index]
-        scores = board["scores"]
-        cursor_pos = board["cursor"]
-        if cursor_pos == len(scores):
-            embed = Embed(description = "👤 Select the player you would like to add")
-            view = View()
-            view.add_item(BoardDropDown(board, interaction.guild, index, "delete", self.message))
-            await interaction.response.send_message(embed = embed, view = view, ephemeral = True)
-        else:
-            user_id = None
-            for idx, val in enumerate(scores):
-                if idx == cursor_pos:
-                    user_id = val
-            
-            
-            BOARDS.update_one(server_boards, {"$inc" : {f"boards.{index}.scores.{user_id}" : -1}})
-
-            scores[user_id] -= 1
-            embed = board_info_embed(board, interaction.guild.members)
-            await interaction.response.edit_message(embed = embed)
-            data_logger.info(SCORE_DECREMENTED.format(
-                interaction.user.id, user_id, board["name"], (guild_id, guild_name)))
+        await handle_score_change(interaction, self.selection, self.message, "delete")
 
 
     
