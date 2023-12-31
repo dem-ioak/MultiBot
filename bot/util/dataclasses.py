@@ -76,7 +76,7 @@ class Server:
     join_to_create : int = -1
     afk_corner : int = -1
 
-    vibes : bool = True
+    vibes : bool = False
     auto_chop : bool = False
     levels : bool = False
 

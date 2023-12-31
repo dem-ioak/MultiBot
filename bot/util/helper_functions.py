@@ -51,13 +51,13 @@ def handle_get_top_call(interaction, target, time, mode):
 
     # Username does not set
     if not fm_username:
-        return
+        return Embed(color = Color.red(), description = "You do not have a LastFM account setup. Use /lastfm set to set your username.")
 
     fm_obj = FMUser(fm_username)
 
     # Username does not exist
     if not fm_obj.is_valid():
-        return
+        return Embed(color = Color.red(), description = f"**{fm_username}** is not a valid username according to LastFM. Use /lastfm set to set your username.")
     
     funcs = {
         "artists" : fm_obj.get_top_artists,

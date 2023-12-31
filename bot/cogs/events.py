@@ -6,10 +6,11 @@ from datetime import datetime, time, date
 from discord import Embed, Color, Status, Streaming, DMChannel
 from discord.ext import commands, tasks
 
-from util.constants import SERVERS, USERS, TEXT_CHANNELS, VCS, WRAPPED, VC_EVENTS, LEVEL_UP, BOARDS, WATCHLIST
+from util.constants import *
 from util.enums import EventType
 from util.helper_functions import leveled_up, archive_event_data, get_size_and_limit
 from util.log_messages import *
+import random
 
 import logging
 
@@ -398,7 +399,93 @@ class Events(commands.Cog):
             # TODO: Banished stuff
        
         else:
+            vc_data = VCS.find_one({"_id" : channel.id})
+            
+            # If VC was not created using join to create
+            if vc_data is None:
+                vc_data_obj = DataClasses.VChannel(
+                    _id = channel.id,
+                    owner = None,
+                    denied = [],
+                    allowed = [],
+                    hidden = [],
+                    is_locked = False,
+                    created_by = None,
+                    created_at = curr_time
+                )
+                VCS.insert_one(vc_data_obj.__dict__)
             event_logger.info(CHANNEL_CREATE.format("VoiceChannel", channel.id, channel.name, channel.guild.id))
+    
+    @tasks.loop(time=VIBE_TIME)
+    async def vibes(self):
+        for guild in self.client.guilds:
+            server_data = SERVERS.find_one({"_id" : guild.id})
+            channel_id = server_data["vibe_id"]
+            gifs = server_data["vibe_gifs"]
+            if server_data["vibes"] and channel_id != -1:
+                channel = self.client.get_channel(channel_id)
+                result = random.randint(1, 10)
+
+                # Bad Vibes 1
+                if result == 1:
+                    await channel.send(BAD_VIBES_GIF)
+                    await channel.send(BAD_VIBES_MESSAGE)
+
+                # Magnificent Vibes 
+                elif result == 2:
+                    await channel.send(MAGNIFICENT_VIBES_GIF)
+                    await channel.send(MAGNIFICENT_VIBES_MESSAGE)
+                
+                # Regular Vibes
+                elif result <= 4:
+                    await channel.send(REGULAR_VIBES_DEFAULT_MESSAGE)
+                    await channel.send(REGULAR_VIBES_MESSAGE)
+
+                # Good Vibes    
+                else:
+                    gif = GOOD_VIBES_DEFAULT_GIF if len(gifs) == 0 else random.choice(gifs)
+                    await channel.send(gif)
+                    await channel.send(GOOD_VIBES_MESSAGE)
+                    
+    @tasks.loop(time=MIDNIGHT)
+    async def birthday(self):
+        today = date.today()
+        curr_month, curr_day, curr_year = today.month, today.day, today.year
+        description = ""
+        for guild in self.client.guilds:
+            server_data = SERVERS.find_one({"_id" : guild.id})
+            all_birthdays = USERS.find({"_id.guild_id" : guild.id, "birthday" : {"$ne" : None}})
+            found = False
+            channel_id = server_data["vibe_id"]
+            if all_birthdays is None:
+                continue
+            
+            channel = self.client.get_channel(channel_id)
+            embed = Embed(
+                title = "🎂 Today's Birthdays",
+                color = Color.orange())
+            embed.set_footer(text = "Set your birthday using /birthday set!")
+
+            for user in all_birthdays:
+                user_bday = user["birthday"]
+                user_id = user["_id"]["user_id"]
+                year, month, day = [int(i) for i in user_bday.split("-")]
+                if curr_month == month and curr_day == day:
+                    member_obj = self.client.get_user(user_id)
+                    if member_obj is None:
+                        continue
+                    
+                    found = True
+                    embed.add_field(
+                        name = member_obj.name, 
+                        value = f"{curr_year - year} Years Old 🎉",
+                        inline = False
+                    )
+            
+            if found:
+                embed.description = description
+                await channel.send(embed=embed)
+                await channel.send("@everyone THERE'S BIRTHDAY(s) TODAY!!!!!")
             
             
 
