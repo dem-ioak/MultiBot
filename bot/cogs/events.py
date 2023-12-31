@@ -22,6 +22,8 @@ class Events(commands.Cog):
     def __init__(self, client):
         self.client = client
         self._cd = commands.CooldownMapping.from_cooldown(1, 60.0, commands.BucketType.member)
+        self.birthday.start()
+        self.vibes.start()
     
     def get_ratelimit(self, message : discord.Message):
         """Returns ratelimit remaining after a message was sent"""
@@ -246,7 +248,7 @@ class Events(commands.Cog):
         if documents:
             VC_EVENTS.insert_many(documents)
             limit, size = get_size_and_limit()
-            if size / limit > .9:
+            if limit > 0 and size / limit > .9:
                 data_logger.info("Archiving vc_event data to prevent overflow")
                 archive_event_data()
     
@@ -402,7 +404,7 @@ class Events(commands.Cog):
             vc_data = VCS.find_one({"_id" : channel.id})
             
             # If VC was not created using join to create
-            if vc_data is None:
+            if "'s VC" not in channel.name:
                 vc_data_obj = DataClasses.VChannel(
                     _id = channel.id,
                     owner = None,
@@ -446,7 +448,7 @@ class Events(commands.Cog):
                     gif = GOOD_VIBES_DEFAULT_GIF if len(gifs) == 0 else random.choice(gifs)
                     await channel.send(gif)
                     await channel.send(GOOD_VIBES_MESSAGE)
-                    
+
     @tasks.loop(time=MIDNIGHT)
     async def birthday(self):
         today = date.today()

@@ -36,38 +36,41 @@ async def handle_cursor_change(interaction, selection, mode):
     return embed 
 
 async def handle_score_change(interaction, selection, message, mode):
-    guild_id = interaction.guild.id
-    guild_name = interaction.guild.name
-    index = selection
-    server_boards = BOARDS.find_one({"_id" : guild_id})
-    board_data = server_boards["boards"]
+    try:
+        guild_id = interaction.guild.id
+        guild_name = interaction.guild.name
+        index = selection
+        server_boards = BOARDS.find_one({"_id" : guild_id})
+        board_data = server_boards["boards"]
 
-    board = board_data[index]
-    scores = board["scores"]
-    cursor_pos = board["cursor"]
-    if cursor_pos + 1 == len(scores):
-        embed = Embed(description = "👤 Select the player you would like to add")
-        view = View()
-        view.add_item(BoardDropDown(board, interaction.guild, index, mode, message))
-        await interaction.response.send_message(embed = embed, view = view, ephemeral = True)
+        board = board_data[index]
+        scores = board["scores"]
+        cursor_pos = board["cursor"]
+        if cursor_pos + 1 == len(scores):
+            embed = Embed(description = "👤 Select the player you would like to add")
+            view = View()
+            view.add_item(BoardDropDown(board, interaction.guild, index, mode, message))
+            await interaction.response.send_message(embed = embed, view = view, ephemeral = True)
 
-    else:
-        
-        change = 1 if mode == "add" else -1
-        user_id, curr_score = scores[cursor_pos]
-        scores[cursor_pos][1] =  max(change + curr_score, 0)
-   
-        scores = sorted(scores, key = lambda x : x[1], reverse = True)
-        board["scores"] = scores
-        base = f"boards.{index}."
-        scores_query = base + "scores"
+        else:
+            
+            change = 1 if mode == "add" else -1
+            user_id, curr_score = scores[cursor_pos]
+            scores[cursor_pos][1] =  max(change + curr_score, 0)
+    
+            scores = sorted(scores, key = lambda x : x[1], reverse = True)
+            board["scores"] = scores
+            base = f"boards.{index}."
+            scores_query = base + "scores"
 
-        BOARDS.update_one({"_id" : guild_id}, {"$set" : {scores_query : scores}})
-        
-        embed = board_info_embed(board, interaction.guild.members)
-        await interaction.response.edit_message(embed = embed)
-        board_logger.info(SCORE_CHANGE.format(
-            interaction.user.id, user_id, board["name"], (guild_id, guild_name)))
+            BOARDS.update_one({"_id" : guild_id}, {"$set" : {scores_query : scores}})
+            
+            embed = board_info_embed(board, interaction.guild.members)
+            await interaction.response.edit_message(embed = embed)
+            board_logger.info(SCORE_CHANGE.format(
+                interaction.user.id, user_id, board["name"], (guild_id, guild_name)))
+    except Exception as e:
+        print(e)
     
 
 
@@ -81,6 +84,7 @@ class BoardDropDown(Select):
         self.guild = guild
         self.message = message
         players = set([user_id for user_id, score in self.board["scores"]])
+        count = 0
         for user in guild.members:
             if user.bot:
                 continue
@@ -92,8 +96,11 @@ class BoardDropDown(Select):
             if self.mode == "delete" and not user_in_list:
                 continue
 
-            self.options.append(SelectOption(label = f"👤 {user.name} - {user_id}"))
+            if count >= 24:
+                break
 
+            self.options.append(SelectOption(label = f"👤 {user.name} - {user_id}"))
+            count += 1
         self.max_values = len(self.options)
     
     async def callback(self, interaction):
