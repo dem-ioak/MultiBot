@@ -204,7 +204,7 @@ class BoardViewButton(Button):
 class BoardListView(View):
     """Board Selection View"""
     def __init__(self, guild_id, author, message, page = 1):
-        super().__init__(timeout = 120)
+        super().__init__(timeout = None)
         self.clear_items()
         self.guild_id = guild_id
         self.author = author
@@ -284,7 +284,7 @@ class BoardListView(View):
 class BoardView(View):
     """Board modification view"""
     def __init__(self, selection, message):
-        super().__init__(timeout = 120)
+        super().__init__(timeout = None)
         self.selection = selection
         self.message = message
     

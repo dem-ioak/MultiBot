@@ -21,7 +21,7 @@ class Moderation(commands.Cog):
             {"$push" : {"auto_roles" : role.id}
         })
         embed = Embed(
-            description = "Successfully added {role.mention} to this server's auto roles",
+            description = f"Successfully added {role.mention} to this server's auto roles",
             color = Color.green()
         )
         await interaction.response.send_message(embed = embed)
