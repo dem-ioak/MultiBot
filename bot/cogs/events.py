@@ -94,10 +94,6 @@ class Events(commands.Cog):
             v_channel_obj = DataClasses.VChannel(
                 _id = v_channel.id,
                 owner = None,
-                denied = None,
-                allowed = None,
-                hidden = None,
-                is_locked = None,
                 created_by = None,
                 created_at = curr_time)
             VCS.insert_one(v_channel_obj.__dict__)
@@ -220,11 +216,6 @@ class Events(commands.Cog):
                     channel_data = DataClasses.VChannel(
                         _id = created_channel.id,
                         owner = user_id,
-                        denied = [],
-                        allowed = [],
-                        hidden = [],
-                        is_locked = False,
-                        deleted_at = None,
                         created_by = user_id,
                         created_at = curr_time
                     )
@@ -408,10 +399,6 @@ class Events(commands.Cog):
                 vc_data_obj = DataClasses.VChannel(
                     _id = channel.id,
                     owner = None,
-                    denied = [],
-                    allowed = [],
-                    hidden = [],
-                    is_locked = False,
                     created_by = None,
                     created_at = curr_time
                 )

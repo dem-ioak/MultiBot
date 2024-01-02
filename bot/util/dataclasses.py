@@ -45,10 +45,10 @@ class WrappedUser:
 class VChannel:
     _id : int
     owner : int
-    denied : list
-    allowed : list
-    hidden : list
-    is_locked : bool
+    #denied : list
+    #allowed : list
+    #hidden : list
+    #is_locked : bool
     created_by : int
     created_at : datetime
     deleted_at : datetime = None
