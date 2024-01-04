@@ -2,11 +2,13 @@ import discord
 from discord import Embed, Color, app_commands
 from discord.app_commands import Choice
 from discord.ext import commands, tasks
+import json
 
-from util.constants import SERVERS, USERS, BANISHED_SUCCESS_MESSAGE, BANISHED_FAILURE_MESSAGE
+from util.constants import SERVERS, USERS, BANISHED_SUCCESS_MESSAGE, BANISHED_FAILURE_MESSAGE, MY_USER_ID, FORBIDDEN_COMMAND
 from util.log_messages import *
 
 import logging
+
 logger = logging.getLogger("data")
 
 class Moderation(commands.Cog):
@@ -139,6 +141,27 @@ class Moderation(commands.Cog):
                     color = Color.red()
                 )
             )
+    
+    @app_commands.command(name = "compile", description = "Output a file consisting of a  user_id -> username map")
+    async def compile_names(self, interaction : discord.Interaction):
+
+        if interaction.user.id != MY_USER_ID:
+            await interaction.response.send_message(
+                embed = FORBIDDEN_COMMAND,
+                ephemeral = True
+            )
+        else:
+            username_map = {}
+            bot_guilds = self.client.guilds
+            for guild in bot_guilds:
+                for user in guild.members:
+                    username_map[user.id] = user.name
+            
+            with open("user_map.json", "w") as f:
+                json.dump(username_map, f)
+            
+            await interaction.response.send_message("✅", ephemeral = True)
+
 
 
 async def setup(client):
