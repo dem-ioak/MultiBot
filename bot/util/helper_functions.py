@@ -35,7 +35,7 @@ def archive_event_data():
     VC_EVENTS.delete_many({})
 
 def get_size_and_limit():
-    coll_stats = cluster.command("collstats", "test_vcevents")
+    coll_stats = cluster.command("collstats", "vcevents")
     limit, size = coll_stats["storageSize"], coll_stats["size"]
     return limit, size
 
