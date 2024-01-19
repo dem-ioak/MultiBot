@@ -60,9 +60,10 @@ class Moderation(commands.Cog):
         
     
     @app_commands.command(description = "Banish a user.")
-    @app_commands.guilds(DAMNIT_GUILD)
+    # @app_commands.guilds(DAMNIT_GUILD)
     async def banish(self, interaction : discord.Interaction, user : discord.Member, reason : str = None):
         await interaction.response.defer()
+
         guild_id = interaction.guild.id
         embed = Embed(color = Color.green())
         server_data = SERVERS.find_one({"_id" : interaction.guild.id})
@@ -74,7 +75,7 @@ class Moderation(commands.Cog):
 
             role = interaction.guild.get_role(banished_role)
             if role is None:
-                await interaction.followup.send_message(embed = Embed(
+                await interaction.followup.send(embed = Embed(
                     description = "This server does not have a banished role setup, user /setup Banish to create the role."
                 ))
                 return
@@ -103,7 +104,7 @@ class Moderation(commands.Cog):
             embed.description = BANISHED_FAILURE_MESSAGE.format(user.mention)
             embed.color = Color.red()
         
-        await interaction.followup.send_message(embed = embed)
+        await interaction.followup.send(embed = embed)
     
     @app_commands.command(description="Unbanish a currently banished user.")
     async def unbanish(self, interaction : discord.Interaction, user : discord.Member):
