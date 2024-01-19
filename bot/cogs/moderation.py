@@ -4,7 +4,7 @@ from discord.app_commands import Choice
 from discord.ext import commands, tasks
 import json
 
-from util.constants import SERVERS, USERS, BANISHED_SUCCESS_MESSAGE, BANISHED_FAILURE_MESSAGE, MY_USER_ID, FORBIDDEN_COMMAND
+from util.constants import SERVERS, USERS, BANISHED_SUCCESS_MESSAGE, BANISHED_FAILURE_MESSAGE, MY_USER_ID, FORBIDDEN_COMMAND, DAMNIT_GUILD
 from util.log_messages import *
 
 import logging
@@ -60,7 +60,7 @@ class Moderation(commands.Cog):
         
     
     @app_commands.command(description = "Banish a user.")
-    @app_commands.guilds(529893177524617221)
+    @app_commands.guilds(DAMNIT_GUILD)
     async def banish(self, interaction : discord.Interaction, user : discord.Member, reason : str = None):
         await interaction.response.defer()
         guild_id = interaction.guild.id

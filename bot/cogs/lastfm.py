@@ -42,7 +42,18 @@ class Lastfm(commands.Cog):
     async def toptracks(self, interaction : discord.Interaction, target : discord.Member = None, time : Choice[str] = None):
         await interaction.response.defer()
         embed = handle_get_top_call(interaction, target, time, "tracks")
-        await interaction.followup.send(embed = embed)
+        await interaction.followup.send(embed = embed) 
+    
+    # TODO: This
+    @lastfm.command(name = "nowplaying", description = "Display what song you are currently streaming.")
+    async def nowplaying(self, interaction : discord.Interaction, target : discord.Member = None):
+        guild_id = interaction.guild.id
+        user_id = target.id if target else interaction.user.id
+        primary_key = {"guild_id" : guild_id, "user_id" : user_id}
+        user_data = USERS.find_one({"_id" : primary_key})
+        fm_username = user_data["last_fm"]
+        if fm_username == -1:
+            pass
     
     @lastfm.command(name = "set", description = "Set your lastfm username")
     async def set(self, interaction : discord.Interaction, username : str):

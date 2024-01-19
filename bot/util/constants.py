@@ -1,5 +1,6 @@
 from util.mongo_connection import MongoDBConnection
 from discord import Embed, Color
+from discord import Object as DObject
 from zoneinfo import ZoneInfo
 from datetime import datetime, time
 
@@ -16,6 +17,8 @@ BOARDS = cluster["boards"]
 WATCHLIST = cluster["watchlist"]
 EVENT_ARCHIVE_DIR = "bot/archive/"
 MY_USER_ID = 739618992393682974
+DAMNIT_ID = 529893177524617221
+DAMNIT_GUILD = DObject(DAMNIT_ID)
 
 
 # Bot Messages
