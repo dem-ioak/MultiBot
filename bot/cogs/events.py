@@ -239,6 +239,7 @@ class Events(commands.Cog):
         if documents:
             VC_EVENTS.insert_many(documents)
             limit, size = get_size_and_limit()
+            print(limit, size)
             if limit > 0 and size / limit > .9:
                 data_logger.info("Archiving vc_event data to prevent overflow")
                 archive_event_data()
