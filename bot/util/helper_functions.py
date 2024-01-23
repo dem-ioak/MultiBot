@@ -27,7 +27,8 @@ def archive_event_data():
     dir_files = os.listdir(EVENT_ARCHIVE_DIR)
     sorted_names = sorted(dir_files)
     suffix = "_archive.json"
-    filename = ("0" if not dir_files else sorted_names[-1][0]) + suffix
+    archive_num = 0 if not dir_files else int(sorted_names[-1][0]) + 1
+    filename = str(archive_num) + suffix
 
     with open(EVENT_ARCHIVE_DIR + filename, "w") as f:
         json.dump(event_list, f, indent = 2, cls = JSONEncoder)
