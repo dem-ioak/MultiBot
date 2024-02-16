@@ -74,7 +74,7 @@ def handle_get_top_call(interaction, target, time, mode):
     
     embed = Embed(
         color = Color.red(), 
-        title = f"{target.name}'s Top {time} Artists",
+        title = f"{target.name}'s Top {time} {mode}",
         description = description)
     embed.set_author(name = interaction.user.name, icon_url= interaction.user.avatar.url)
     return embed

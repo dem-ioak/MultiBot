@@ -6,6 +6,9 @@ FM_BASE = "https://ws.audioscrobbler.com/2.0/?method="
 FM_PARAMS = "&user={}&api_key={}&format=json"
 FM_TOP_PARAMS = "&user={}&api_key={}&format=json&period={}"
 
+def convert_title(title):
+    return title.replace(" ", "+").replace("&", "%26")
+
 # Not in `helper_functions` to avoid circular import issue
 def json_extract(obj, key, val):
     """Recursively fetch values from nested JSON."""
@@ -47,13 +50,23 @@ class FMUser:
             return False
     
             
-    def get_plays_track(self, track):
+    def get_plays_track(self, artist, track):
         """Get this user's playcount for provided track"""
-        pass
+        try:
+            artist, track = convert_title(artist), convert_title(track)
+            URL = FM_BASE + f"track.getInfo&api_key={LAST_FM_KEY}&artist={artist}&track={track}&username={self.username}&format=json"
+            source = requests.get(URL)
+            return source["track"]["userplaycount"]
+        except Exception as e:
+            return 0
+        
 
     def get_plays_artist(self, artist):
         """Get this user's playcount for provided artist"""
-        pass
+        artist = convert_title(artist)
+        URL = FM_BASE + f"artist.getinfo&artist={artist}&api_key={LAST_FM_KEY}&format=json&username={self.username}"
+        source = requests.get(URL)
+        return source["artist"]["stats"]["userplaycount"]
         
     def get_plays_album(self, album):
         """Get this user's playcount for provided album"""
@@ -153,6 +166,7 @@ class FMUser:
                     break
 
         return result
+    
 
     def get_top_tracks_album(self, album):
         """Get this user's top tracks from the provided album"""

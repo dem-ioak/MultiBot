@@ -51,11 +51,12 @@ class Lastfm(commands.Cog):
     @lastfm.command(name = "nowplaying", description = "Display what song you are currently streaming.")
     async def nowplaying(self, interaction : discord.Interaction, target : discord.Member = None):
         guild_id = interaction.guild.id
+        target = target if target else interaction.user
         user_id = target.id if target else interaction.user.id
         primary_key = {"guild_id" : guild_id, "user_id" : user_id}
         user_data = USERS.find_one({"_id" : primary_key})
         fm_username = user_data["last_fm"]
-        if fm_username == -1:
+        if not fm_username:
             await interaction.response.send_message(embed = NO_USERNAME_EMBED)
             return
 
@@ -69,6 +70,33 @@ class Lastfm(commands.Cog):
         embed.set_thumbnail(url=img)
         embed.set_author(name=target.name, icon_url=target.avatar.url)
         await interaction.response.send_message(embed=embed)
+    
+    @lastfm.command(name = "toptracksartist", description = "Generate your most played songs from a given artist")
+    async def toptracksartist(self, interaction : discord.Interaction, target : discord.Member, artist : str = None):
+        embed = Embed(color = Color.red())
+        guild_id = interaction.guild.id
+        target = target if target else interaction.user
+        user_id = target.id if target else interaction.user.id
+        primary_key = {"guild_id" : guild_id, "user_id" : user_id}
+        user_data = USERS.find_one({"_id" : primary_key})
+        fm_username = user_data["last_fm"]
+        if not fm_username:
+            await interaction.response.send_message(embed = NO_USERNAME_EMBED)
+            return
+
+        await interaction.response.defer()
+        res = ""
+        fm_user = FMUser(fm_username)
+        artist = artist if artist else fm_user.get_np()["artist"]
+        data = fm_user.get_top_tracks_artist(artist)
+        for i, val in enumerate(data):
+            res += f"`{i + 1}` **{val[0]}** - {val[1]} plays\n"
+        
+        embed.description = res if res else "No listening records for this artist"
+        embed.set_author(name = target.name, icon_url = target.avatar.url)
+        await interaction.followup.send(embed = embed)
+
+
 
     
     @lastfm.command(name = "set", description = "Set your lastfm username")
