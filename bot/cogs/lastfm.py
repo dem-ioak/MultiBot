@@ -15,6 +15,9 @@ CHOICES = [
         Choice(name = "Yearly", value = "12month")
     ]
 
+NO_USERNAME_EMBED = Embed(
+    description="You have not yet set your **Last.FM** username! Use `fm set (username)` to get started.",
+    color = Color.red())
 
 
 class Lastfm(commands.Cog):
@@ -53,7 +56,20 @@ class Lastfm(commands.Cog):
         user_data = USERS.find_one({"_id" : primary_key})
         fm_username = user_data["last_fm"]
         if fm_username == -1:
-            pass
+            await interaction.response.send_message(embed = NO_USERNAME_EMBED)
+            return
+
+        fm_user = FMUser(fm_username)
+        name, artist, img, album = fm_user.get_np().values()
+        embed = Embed()
+        embed.color = Color.red()
+        embed.add_field(name = "Track", value = name, inline = True)
+        embed.add_field(name = "Artist", value = artist, inline = True)
+        embed.set_footer(text="Album: {} - Playcount: {}".format(album, "?"))
+        embed.set_thumbnail(url=img)
+        embed.set_author(name=target.name, icon_url=target.avatar.url)
+        await interaction.response.send_message(embed=embed)
+
     
     @lastfm.command(name = "set", description = "Set your lastfm username")
     async def set(self, interaction : discord.Interaction, username : str):
