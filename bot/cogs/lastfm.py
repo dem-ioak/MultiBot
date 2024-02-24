@@ -4,7 +4,7 @@ from discord.ext import commands, tasks
 from discord.app_commands import Choice
 
 from util.helper_functions import handle_get_top_call
-from util.classes.FMUser import FMUser
+from util.classes.FMUser import FMUser, convert_title
 from util.constants import USERS
 
 CHOICES = [

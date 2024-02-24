@@ -153,12 +153,16 @@ class FMUser:
         result = []
         curr_page = 1
         capacity = False
+
         while not capacity:
             resp = requests.get(URL + str(curr_page))
             if resp.status_code != 200:
                 break
 
             data = resp.json()
+            if not data["toptracks"]["track"]:
+                break
+            
             for j in json_extract(data, "name", artist):
                 result.append(j)
                 if len(result) == 10:
