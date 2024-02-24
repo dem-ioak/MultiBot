@@ -151,7 +151,7 @@ class FMUser:
         URL = FM_BASE + method + FM_PARAMS.format(self.username, LAST_FM_KEY) + "&limit=200&page="
         artist = artist.lower()
         result = []
-        curr_page = 0
+        curr_page = 1
         capacity = False
         while not capacity:
             resp = requests.get(URL + str(curr_page))
@@ -164,6 +164,7 @@ class FMUser:
                 if len(result) == 10:
                     capacity = True
                     break
+            curr_page += 1
 
         return result
     

@@ -72,7 +72,7 @@ class Lastfm(commands.Cog):
         await interaction.response.send_message(embed=embed)
     
     @lastfm.command(name = "toptracksartist", description = "Generate your most played songs from a given artist")
-    async def toptracksartist(self, interaction : discord.Interaction, target : discord.Member, artist : str = None):
+    async def toptracksartist(self, interaction : discord.Interaction, target : discord.Member = None, artist : str = None):
         embed = Embed(color = Color.red())
         guild_id = interaction.guild.id
         target = target if target else interaction.user
@@ -95,9 +95,6 @@ class Lastfm(commands.Cog):
         embed.description = res if res else "No listening records for this artist"
         embed.set_author(name = target.name, icon_url = target.avatar.url)
         await interaction.followup.send(embed = embed)
-
-
-
     
     @lastfm.command(name = "set", description = "Set your lastfm username")
     async def set(self, interaction : discord.Interaction, username : str):
@@ -112,6 +109,10 @@ class Lastfm(commands.Cog):
             embed = Embed(color = Color.green(), description = f"Successfully set your LastFM username to **{username}**")
 
         await interaction.response.send_message(embed = embed)
+    
+    @lastfm.command(name = "compareartist", description= "Compare every user's playcount of a given artist")
+    async def comparetrack(self, interaction : discord.Interaction, target : discord.Member = None):
+        pass
 
 
 
