@@ -122,6 +122,7 @@ class Lastfm(commands.Cog):
             await interaction.response.send_message(embed = NO_USERNAME_EMBED)
             return
         
+        await interaction.response.defer()
         user_fm_obj = FMUser(user_fm)
         now_playing = user_fm_obj.get_np()
         artist = now_playing["artist"]
@@ -160,6 +161,7 @@ class Lastfm(commands.Cog):
             await interaction.response.send_message(embed = NO_USERNAME_EMBED)
             return
         
+        await interaction.response.defer()
         user_fm_obj = FMUser(user_fm)
         now_playing = user_fm_obj.get_np()
         artist, track = now_playing["artist"], now_playing["song_name"]
