@@ -65,7 +65,7 @@ class FMUser:
         """Get this user's playcount for provided artist"""
         artist = convert_title(artist)
         URL = FM_BASE + f"artist.getinfo&artist={artist}&api_key={LAST_FM_KEY}&format=json&username={self.username}"
-        source = requests.get(URL)
+        source = requests.get(URL).json()
         return source["artist"]["stats"]["userplaycount"]
         
     def get_plays_album(self, album):

@@ -100,13 +100,13 @@ class Fun(commands.Cog):
         entries.sort(key = lambda x : x[2], reverse = True)
         description = str()
         embed = Embed(title = f"{interaction.guild.name} Levels Leaderboard", color = Color.gold())
-        embed.set_footer("Users are given 5-15 xp per message, with a cooldown of 1 message per minute")
+        embed.set_footer(text = "Users are given 5-15 xp per message, with a cooldown of 1 message per minute")
         for i, entry in enumerate(entries):
             username, level, xp = entry
             description += f"**{i + 1}. {username}** - Level {level} ({xp} XP)\n"
         embed.description = description
         
-        await interaction.response.send_message(embed = embed, ephemeral=True)
+        await interaction.response.send_message(embed = embed, ephemeral = True)
             
         
         
