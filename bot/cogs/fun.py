@@ -86,7 +86,7 @@ class Fun(commands.Cog):
         entries = []
         for user in server_users:
             user_id = user["_id"]["user_id"]
-            user_obj = self.client.get_member(user_id)
+            user_obj = self.client.get_user(user_id)
             
             # User is no longer in the server
             if user_obj is None:

@@ -25,9 +25,9 @@ def archive_event_data():
     all_events = VC_EVENTS.find()
     event_list = list(all_events)
     dir_files = os.listdir(EVENT_ARCHIVE_DIR)
-    sorted_names = sorted(dir_files)
+    sorted_names = sorted(dir_files, key = lambda x : int(x.split("_")[0]))
     suffix = "_archive.json"
-    archive_num = 0 if not dir_files else int(sorted_names[-1][0]) + 1
+    archive_num = 0 if not dir_files else int(sorted_names[-1].split("_")[0]) + 1
     filename = str(archive_num) + suffix
 
     with open(EVENT_ARCHIVE_DIR + filename, "w") as f:

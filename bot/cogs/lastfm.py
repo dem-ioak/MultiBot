@@ -130,7 +130,7 @@ class Lastfm(commands.Cog):
         entries = []
         for user in fm_users:
             user_id = user["_id"]["user_id"]
-            user_obj = self.client.get_member(user_id)
+            user_obj = self.client.get_user(user_id)
             
             if not user_obj:
                 continue
@@ -168,7 +168,7 @@ class Lastfm(commands.Cog):
         entries = []
         for user in fm_users:
             user_id = user["_id"]["user_id"]
-            user_obj = self.client.get_member(user_id)
+            user_obj = self.client.get_user(user_id)
             
             if not user_obj:
                 continue
