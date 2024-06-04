@@ -55,9 +55,10 @@ class FMUser:
         try:
             artist, track = convert_title(artist), convert_title(track)
             URL = FM_BASE + f"track.getInfo&api_key={LAST_FM_KEY}&artist={artist}&track={track}&username={self.username}&format=json"
-            source = requests.get(URL)
+            source = requests.get(URL).json()
             return source["track"]["userplaycount"]
         except Exception as e:
+            print(e)
             return 0
         
 

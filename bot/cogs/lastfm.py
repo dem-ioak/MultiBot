@@ -138,7 +138,7 @@ class Lastfm(commands.Cog):
             
             fm_username = user["last_fm"]
             fm_obj = FMUser(fm_username)
-            playcount = fm_obj.get_plays_artist(artist)
+            playcount = int(fm_obj.get_plays_artist(artist))
             entries.append((user_obj.name, playcount))
         
         entries.sort(key = lambda x : x[1], reverse = True)
@@ -177,7 +177,7 @@ class Lastfm(commands.Cog):
             
             fm_username = user["last_fm"]
             fm_obj = FMUser(fm_username)
-            playcount = fm_obj.get_plays_track(artist, track)
+            playcount = int(fm_obj.get_plays_track(artist, track))
             entries.append((user_obj.name, playcount))
         
         entries.sort(key = lambda x : x[1], reverse = True)
