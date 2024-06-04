@@ -3,7 +3,7 @@ from discord.ext import commands, tasks
 from discord import Embed, Color, app_commands
 import random
 from time import sleep
-from util.constants import INTEGER_CONVERSION_FAIL
+from util.constants import INTEGER_CONVERSION_FAIL, USERS
 
 
 class Fun(commands.Cog):
@@ -79,6 +79,37 @@ class Fun(commands.Cog):
         await interaction.response.send_message(
             embed = embed
         )
+    
+    @app_commands.command(description = "Display this server's level leaderboard")
+    async def leaderboard(self, interaction : discord.Interaction):
+        server_users = USERS.find({"_id.guild_id" : interaction.guild.id})
+        entries = []
+        for user in server_users:
+            user_id = user["_id"]["user_id"]
+            user_obj = self.client.get_member(user_id)
+            
+            # User is no longer in the server
+            if user_obj is None:
+                continue
+            
+            username = user_obj.name
+            level = user["level"]
+            xp = user["xp"]
+            entries.append((username, level, xp))
+        
+        entries.sort(key = lambda x : x[2], reverse = True)
+        description = str()
+        embed = Embed(title = f"{interaction.guild.name} Levels Leaderboard", color = Color.gold())
+        embed.set_footer("Users are given 5-15 xp per message, with a cooldown of 1 message per minute")
+        for i, entry in enumerate(entries):
+            username, level, xp = entry
+            description += f"**{i + 1}. {username}** - Level {level} ({xp} XP)\n"
+        embed.description = description
+        
+        await interaction.response.send_message(embed = embed, ephemeral=True)
+            
+        
+        
 
 async def setup(client):
     await client.add_cog(Fun(client))

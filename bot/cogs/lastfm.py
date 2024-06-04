@@ -62,11 +62,12 @@ class Lastfm(commands.Cog):
 
         fm_user = FMUser(fm_username)
         name, artist, img, album = fm_user.get_np().values()
+        playcount = fm_user.get_plays_track(artist, name)
         embed = Embed()
         embed.color = Color.red()
         embed.add_field(name = "Track", value = name, inline = True)
         embed.add_field(name = "Artist", value = artist, inline = True)
-        embed.set_footer(text="Album: {} - Playcount: {}".format(album, "?"))
+        embed.set_footer(text="Album: {} - Playcount: {}".format(album, playcount))
         embed.set_thumbnail(url=img)
         embed.set_author(name=target.name, icon_url=target.avatar.url)
         await interaction.response.send_message(embed=embed)
@@ -111,8 +112,79 @@ class Lastfm(commands.Cog):
         await interaction.response.send_message(embed = embed)
     
     @lastfm.command(name = "compareartist", description= "Compare every user's playcount of a given artist")
+    async def compareartist(self, interaction : discord.Interaction):
+        guild_id = interaction.guild.id
+        user_id = interaction.user.id
+        primary_key = {"guild_id" : guild_id, "user_id" : user_id}
+        user_data = USERS.find_one({"_id" : primary_key})
+        user_fm = user_data["last_fm"]
+        if not user_fm:
+            await interaction.response.send_message(embed = NO_USERNAME_EMBED)
+            return
+        
+        user_fm_obj = FMUser(user_fm)
+        now_playing = user_fm_obj.get_np()
+        artist = now_playing["artist"]
+        
+        fm_users = USERS.find({"_id.guild_id" : guild_id, "last_fm" : {"$ne" : None}}) # All users IN THIS SERVER, with a FM set
+        entries = []
+        for user in fm_users:
+            user_id = user["_id"]["user_id"]
+            user_obj = self.client.get_member(user_id)
+            
+            if not user_obj:
+                continue
+            
+            fm_username = user["last_fm"]
+            fm_obj = FMUser(fm_username)
+            playcount = fm_obj.get_plays_artist(artist)
+            entries.append((user_obj.name, playcount))
+        
+        entries.sort(key = lambda x : x[1], reverse = True)
+        description = str()
+        for i, (username, playcount) in enumerate(entries):
+            description += f"`{i + 1}` **{username}** - {playcount} Plays\n"
+        
+        embed = Embed(title = f"Top Listeners for {artist}", description = description, color = Color.red())
+        await interaction.followup.send(embed = embed)
+        
+    
+    @lastfm.command(name = "comparetrack", description="Compare every user's playcount of a given track")
     async def comparetrack(self, interaction : discord.Interaction, target : discord.Member = None):
-        pass
+        guild_id = interaction.guild.id
+        user_id = interaction.user.id
+        primary_key = {"guild_id" : guild_id, "user_id" : user_id}
+        user_data = USERS.find_one({"_id" : primary_key})
+        user_fm = user_data["last_fm"]
+        if not user_fm:
+            await interaction.response.send_message(embed = NO_USERNAME_EMBED)
+            return
+        
+        user_fm_obj = FMUser(user_fm)
+        now_playing = user_fm_obj.get_np()
+        artist, track = now_playing["artist"], now_playing["song_name"]
+        
+        fm_users = USERS.find({"_id.guild_id" : guild_id, "last_fm" : {"$ne" : None}}) # All users IN THIS SERVER, with a FM set
+        entries = []
+        for user in fm_users:
+            user_id = user["_id"]["user_id"]
+            user_obj = self.client.get_member(user_id)
+            
+            if not user_obj:
+                continue
+            
+            fm_username = user["last_fm"]
+            fm_obj = FMUser(fm_username)
+            playcount = fm_obj.get_plays_track(artist, track)
+            entries.append((user_obj.name, playcount))
+        
+        entries.sort(key = lambda x : x[1], reverse = True)
+        description = str()
+        for i, (username, playcount) in enumerate(entries):
+            description += f"`{i + 1}` **{username}** - {playcount} Plays\n"
+        
+        embed = Embed(title = f"Top Listeners for {track} by {artist}", description = description, color = Color.red())
+        await interaction.followup.send(embed = embed)
 
 
 
