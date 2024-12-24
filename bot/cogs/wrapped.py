@@ -3,8 +3,9 @@ from discord import ButtonStyle, Embed, Color, app_commands
 from discord.ext import commands
 from discord.ui import Button, View
 import os
+from collections import defaultdict
 
-from util.constants import USERS
+from util.constants import USERS, FORBIDDEN_COMMAND
 
 BOARD_EMOJIS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
 
@@ -240,9 +241,10 @@ class Wrapped(commands.Cog):
     async def wrapped(self, interaction: discord.Interaction):
         if interaction.user.id != 739618992393682974:
             await interaction.response.send_message(
-                "no no no", ephemeral=True
+                embed=FORBIDDEN_COMMAND, ephemeral=True
             )
             return
+        
         user_id = interaction.user.id
         server_ids = list(
             sorted(int(id_) for id_ in os.listdir(WRAPPED_DIR))
@@ -273,8 +275,54 @@ class Wrapped(commands.Cog):
     
     @app_commands.command(description="Deliver Wrapped")
     async def announce(self, interaction: discord.Interaction):
+        if interaction.user.id != 739618992393682974:
+            await interaction.response.send_message(embed = FORBIDDEN_COMMAND, ephemeral=True)
+            return
+        
+        await interaction.response.defer()
+        eligibility_map = defaultdict(list)
+        eligible_users = set()
         for server in self.client.guilds:
-            pass
+            for user in server.members:
+                if eligibility_check(user.id, server.id):
+                    eligibility_map[user.id].append(server.id)
+                    eligible_users.add(user.id)
+        
+        success = 0
+        fail = 0
+        failed_users = []
+        for user_id in eligible_users:
+            
+            user_obj = self.client.get_user(user_id)
+            embed = Embed(title = "DISCORD WRAPPED 2024", color = Color.random())
+            embed.description = "Merry Christmas Eve! 🌲 Your Discord Wrapped for 2024 is available in the following servers:\n\n"
+            
+            for server_id in eligibility_map[user_id]:
+                embed.description += f"**{SERVER_NAMES[server_id]}**\n"
+            
+            embed.description += "\nTo access, run the Yeat Bot command **/wrapped** either here or in any one of these servers."
+            embed.set_footer(text = "If you have any issues accessing, DM or ping @.demetri.")
+            try:    
+                success += 1
+                await user_obj.send(embed = embed)
+            except:
+                fail += 1
+                failed_users.append[user_obj.name]
+        
+        response_text = f"Delivered with {success} successes and {fail} failures."
+        if fail != 0:
+            response_text += "\n\nFailed to send to:\n"
+            for username in failed_users:
+                response_text += f"{username}\n"
+                
+        await interaction.followup.send(embed = Embed(description=response_text, color = Color.green()), ephemeral=True)
+        
+            
+        
+        
+        
+        
+        
         
 
 
