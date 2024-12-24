@@ -144,35 +144,6 @@ class Moderation(commands.Cog):
                     color = Color.red()
                 )
             )
-    
-    @app_commands.command(name = "compile", description = "Output a file consisting of a  user_id -> username map")
-    async def compile_names(self, interaction : discord.Interaction):
-        if interaction.user.id != MY_USER_ID:
-            await interaction.response.send_message(
-                embed = FORBIDDEN_COMMAND,
-                ephemeral = True
-            )
-        else:
-            username_map = {}
-            bot_guilds = self.client.guilds
-            for guild in bot_guilds:
-                for user in guild.members:
-                    if user.bot:
-                        continue
-                    
-                    directory = f"C:/Users\demio/OneDrive/Desktop/Jupyter/Wrapped2024/{guild.id}/{user.id}"
-                    if os.path.exists(directory):
-                        avatar_url = user.display_avatar.url
-                        response = requests.get(avatar_url)
-                        with open(directory + "/avatar.png", 'wb') as f:
-                            f.write(response.content)
-                        username_map[user.id] = user.name
-            
-            with open("user_map.json", "w") as f:
-                json.dump(username_map, f)
-            
-            await interaction.response.send_message("✅", ephemeral = True)
-
 
 
 async def setup(client):
