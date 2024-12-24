@@ -3,6 +3,8 @@ from discord import Embed, Color, app_commands
 from discord.app_commands import Choice
 from discord.ext import commands, tasks
 import json
+import requests
+import os
 
 from util.constants import SERVERS, USERS, BANISHED_SUCCESS_MESSAGE, BANISHED_FAILURE_MESSAGE, MY_USER_ID, FORBIDDEN_COMMAND, DAMNIT_GUILD
 from util.log_messages import *
@@ -145,7 +147,6 @@ class Moderation(commands.Cog):
     
     @app_commands.command(name = "compile", description = "Output a file consisting of a  user_id -> username map")
     async def compile_names(self, interaction : discord.Interaction):
-
         if interaction.user.id != MY_USER_ID:
             await interaction.response.send_message(
                 embed = FORBIDDEN_COMMAND,
@@ -156,7 +157,16 @@ class Moderation(commands.Cog):
             bot_guilds = self.client.guilds
             for guild in bot_guilds:
                 for user in guild.members:
-                    username_map[user.id] = user.name
+                    if user.bot:
+                        continue
+                    
+                    directory = f"C:/Users\demio/OneDrive/Desktop/Jupyter/Wrapped2024/{guild.id}/{user.id}"
+                    if os.path.exists(directory):
+                        avatar_url = user.display_avatar.url
+                        response = requests.get(avatar_url)
+                        with open(directory + "/avatar.png", 'wb') as f:
+                            f.write(response.content)
+                        username_map[user.id] = user.name
             
             with open("user_map.json", "w") as f:
                 json.dump(username_map, f)
