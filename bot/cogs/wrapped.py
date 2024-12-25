@@ -239,12 +239,7 @@ class Wrapped(commands.Cog):
 
     @app_commands.command(description="Deliver Wrapped")
     async def wrapped(self, interaction: discord.Interaction):
-        if interaction.user.id != 739618992393682974:
-            await interaction.response.send_message(
-                embed=FORBIDDEN_COMMAND, ephemeral=True
-            )
-            return
-        
+
         user_id = interaction.user.id
         server_ids = list(
             sorted(int(id_) for id_ in os.listdir(WRAPPED_DIR))
