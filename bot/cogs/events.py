@@ -121,7 +121,7 @@ class Events(commands.Cog):
             data_logger.info(USER_DATA_ADD.format(user_id, (guild_id, guild_name)))
 
         # Log join event if server has a `logs` channel
-        if server_data["logs"] != -1:
+        if server_data["logs_id"] != -1:
             pass
 
         # Give user all `auto_roles` for this server

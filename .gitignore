@@ -3,3 +3,5 @@ util/constants.py
 bot/logs
 bot/archive
 cog_template.py
+*/__pycache__/*
+*.pyc
