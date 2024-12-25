@@ -302,7 +302,7 @@ class Wrapped(commands.Cog):
                 await user_obj.send(embed = embed)
             except:
                 fail += 1
-                failed_users.append[user_obj.name]
+                failed_users.append(user_obj.name)
         
         response_text = f"Delivered with {success} successes and {fail} failures."
         if fail != 0:
