@@ -17,6 +17,8 @@ from util.constants import (
     MY_USER_ID,
     FORBIDDEN_COMMAND,
     DAMNIT_GUILD,
+    WATCHLIST,
+    BOARDS,
 )
 from util.log_messages import *
 
@@ -175,6 +177,30 @@ class Moderation(commands.Cog):
                     color=Color.red(),
                 )
             )
+
+    @app_commands.command(description="Initialize features channel")
+    async def init_features(self, interaction: discord.Interaction):
+        if interaction.user.id != MY_USER_ID:
+            await interaction.response.send_message(embed=FORBIDDEN_COMMAND)
+            return
+
+        placeholder_embed = Embed(
+            description="This is a placeholder, which will be overrided momentarily.",
+            color=Color.random(),
+        )
+        server_id = interaction.guild.id
+        channel_id = interaction.channel.id
+        board_placeholder = await interaction.channel.send(embed=placeholder_embed)
+        watchlist_placeholder = await interaction.channel.send(embed=placeholder_embed)
+        
+        try:
+        
+            WATCHLIST.update_one({"_id" : server_id}, {"$set" : {"message_id" : watchlist_placeholder.id, "channel_id" : channel_id}})
+            BOARDS.update_one({"_id" : server_id}, {"$set" : {"message_id" : board_placeholder.id, "channel_id" : channel_id}})
+            await interaction.response.send_message("✅", ephemeral=True)
+        
+        except Exception as e:
+            print(e)
 
 
 async def setup(client):

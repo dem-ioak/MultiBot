@@ -1,7 +1,7 @@
 .env
-util/constants.py
+bot/util/constants.py
 bot/logs
 bot/archive
 cog_template.py
-*/__pycache__/*
+*/__pycache__/
 *.pyc
