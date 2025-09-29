@@ -232,7 +232,8 @@ class BoardListView(View):
             self.add_item(to_add)
     
     async def interaction_check(self, interaction : discord.Interaction):
-        return interaction.user.id == self.author
+        # No longer in use
+        return True
 
     
     @discord.ui.button(style = ButtonStyle.gray, emoji = "◀️", row = 2)

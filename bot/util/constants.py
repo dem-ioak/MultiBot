@@ -76,6 +76,7 @@ INTEGER_CONVERSION_FAIL =Embed(
                     color = Color.red()
                 )
 
+DEPRECEATED = Embed(description= "This command is depreceated for now, and thus does nothing when ran.", color = Color.red())
 # TimeZones
 EST_TIME = ZoneInfo("America/New_York")
 VIBE_TIME = time(hour=13, minute = 0, second = 0, microsecond = 0, tzinfo = EST_TIME)
