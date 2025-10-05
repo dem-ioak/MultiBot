@@ -7,6 +7,7 @@ import requests
 import os
 
 import util.dataclasses as DataClasses
+from util.log_manager import get_logger
 
 from util.constants import (
     WRAPPED,
@@ -33,6 +34,8 @@ class Moderation(commands.Cog):
 
     @app_commands.command(description="Add to this servers auto roles")
     async def autor(self, interaction: discord.Interaction, role: discord.Role):
+        log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
+        log.info("COMMAND_INVOKED: /autor")
         guild_id = interaction.guild.id
         server_data = SERVERS.find_one({"_id": guild_id})
         SERVERS.update_one(server_data, {"$push": {"auto_roles": role.id}})
@@ -58,6 +61,8 @@ class Moderation(commands.Cog):
         channel_type: Choice[str],
         channel_id: str,
     ):
+        log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
+        log.info("COMMAND_INVOKED: /set_channel")
         guild_id = interaction.guild.id
         channel_id = int(channel_id)
 
@@ -87,10 +92,11 @@ class Moderation(commands.Cog):
             await interaction.response.send_message(ephemeral=True, content="✅")
 
     @app_commands.command(description="Banish a user.")
-    # @app_commands.guilds(DAMNIT_GUILD)
     async def banish(
         self, interaction: discord.Interaction, user: discord.Member, reason: str = None
     ):
+        log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
+        log.info("COMMAND_INVOKED: /banish")
         await interaction.response.defer()
 
         guild_id = interaction.guild.id
@@ -140,6 +146,8 @@ class Moderation(commands.Cog):
 
     @app_commands.command(description="Unbanish a currently banished user.")
     async def unbanish(self, interaction: discord.Interaction, user: discord.Member):
+        log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
+        log.info("COMMAND_INVOKED: /unbanish")
         guild_id = interaction.guild.id
         server_data = SERVERS.find_one({"_id": interaction.guild.id})
         user_data = USERS.find_one({"_id": {"guild_id": guild_id, "user_id": user.id}})
@@ -179,6 +187,8 @@ class Moderation(commands.Cog):
 
     @app_commands.command(description="Initialize features channel")
     async def init_features(self, interaction: discord.Interaction):
+        log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
+        log.info("COMMAND_INVOKED: /init_features")
         if interaction.user.id != MY_USER_ID:
             await interaction.response.send_message(embed=FORBIDDEN_COMMAND)
             return

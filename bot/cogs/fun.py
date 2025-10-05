@@ -4,6 +4,7 @@ from discord import Embed, Color, app_commands
 import random
 from time import sleep
 from util.constants import INTEGER_CONVERSION_FAIL, USERS
+from util.log_manager import get_logger
 
 
 class Fun(commands.Cog):
@@ -12,6 +13,10 @@ class Fun(commands.Cog):
 
     @app_commands.command(description="Flip a coin.")
     async def flip(self, interaction : discord.Interaction):
+        
+        log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
+        log.info("COMMAND_INVOKED: /flip")
+        
         choice = random.choice(["Heads", "Tails"])
         embed = Embed(
             color = Color.green(),
@@ -24,6 +29,10 @@ class Fun(commands.Cog):
     
     @app_commands.command(description="Make a randomized decision.")
     async def decide(self, interaction : discord.Interaction, args : str):
+        
+        log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
+        log.info("COMMAND_INVOKED: /decide")
+        
         first, second = Embed(), Embed()
         first.color = second.color = Color.dark_orange()
         options = args.split() if "-" not in args else args.split("-")
@@ -52,6 +61,9 @@ class Fun(commands.Cog):
     
     @app_commands.command(description="Chose a random number between x-y.")
     async def rng(self, interaction : discord.Interaction, first : str, last : str):
+        
+        log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
+        log.info("COMMAND_INVOKED: /rng")
         try:
             first = int(first)
             last = int(last)
@@ -82,6 +94,9 @@ class Fun(commands.Cog):
     
     @app_commands.command(description = "Display this server's level leaderboard")
     async def leaderboard(self, interaction : discord.Interaction):
+        
+        log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
+        log.info("COMMAND_INVOKED: /leaderboard")
         server_users = USERS.find({"_id.guild_id" : interaction.guild.id})
         entries = []
         for user in server_users:
