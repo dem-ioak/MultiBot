@@ -7,6 +7,7 @@ from util.constants import BOARDS
 from util.helper_functions import board_view_description, board_info_embed, parse_id
 import util.dataclasses as DataClasses
 from util.log_messages import SCORE_CHANGE, BOARD_ADD_USER, BOARD_ADD
+from util.log_manager import get_logger
 from datetime import datetime
 
 import logging
@@ -37,6 +38,7 @@ async def handle_score_change(interaction, selection, message, mode):
     try:
         guild_id = interaction.guild.id
         guild_name = interaction.guild.name
+        log = get_logger(__name__, server=guild_name, user=interaction.user.name)
         index = selection
         server_boards = BOARDS.find_one({"_id" : guild_id})
         board_data = server_boards["boards"]
@@ -54,6 +56,7 @@ async def handle_score_change(interaction, selection, message, mode):
             
             change = 1 if mode == "add" else -1
             user_id, curr_score = scores[cursor_pos]
+            target_user = interaction.guild.get_member(int(user_id))
             scores[cursor_pos][1] =  max(change + curr_score, 0)
     
             scores = sorted(scores, key = lambda x : x[1], reverse = True)
@@ -64,10 +67,10 @@ async def handle_score_change(interaction, selection, message, mode):
             BOARDS.update_one({"_id" : guild_id}, {"$set" : {scores_query : scores}})
             
             embed = board_info_embed(board, interaction.guild.members)
+            log.info(f"[board_name={board['name']}] Score {'incremented' if mode == 'add' else 'decremented'} for user={target_user.name} from {curr_score} to {scores[cursor_pos][1]}")
             await interaction.response.edit_message(embed = embed)
     except Exception as e:
-        print(e)
-    
+        log.error(f"Error occurred while handling score change: {e}")
 
 
 class BoardDropDown(Select):
