@@ -26,9 +26,11 @@ class MyBot(commands.Bot):
         await self.tree.sync()
 
     async def load_cogs(self):
+        log = get_logger(__name__)
         count = 0
         success = 0
         for filename in os.listdir("bot/cogs"):
+            log.info(f"Attempting to load cog: {filename}")
             if filename.endswith(".py") and "__init__" not in filename:
                 count += 1
                 try:
@@ -38,6 +40,8 @@ class MyBot(commands.Bot):
                     pass
 
                     continue
+                
+        log.info(f"Successfully loaded {success}/{count} cogs.")
         return count, success
 
     async def on_error(self, *args, **kwargs):
