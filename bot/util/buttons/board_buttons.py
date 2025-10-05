@@ -11,8 +11,6 @@ from datetime import datetime
 
 import logging
 
-board_logger = logging.getLogger("board")
-
 BOARD_EMOJIS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
 
 async def handle_cursor_change(interaction, selection, mode):
@@ -67,8 +65,6 @@ async def handle_score_change(interaction, selection, message, mode):
             
             embed = board_info_embed(board, interaction.guild.members)
             await interaction.response.edit_message(embed = embed)
-            board_logger.info(SCORE_CHANGE.format(
-                interaction.user.id, user_id, board["name"], (guild_id, guild_name)))
     except Exception as e:
         print(e)
     
@@ -113,10 +109,6 @@ class BoardDropDown(Select):
                 user_id = str(user_id)
                 if self.mode == "add":
                     new_users.append((user_id, 0))
-                    board_logger.info(BOARD_ADD_USER.format(
-                        interaction.user.id, user_id, 
-                        self.board["name"], (interaction.guild.id, interaction.guild.name)
-                    ))
                 else:
                     deleted_users.append(user_id)
         
@@ -174,7 +166,6 @@ class BoardAddition(Modal):
         
         BOARDS.update_one({"_id" : guild_id}, {"$push" : {"boards" : board_obj.__dict__}})
         server_boards["boards"].append(board_obj.__dict__)
-        board_logger.info(BOARD_ADD.format(interaction.user.id, name, (guild_id, guild_name)))
 
         description = board_view_description(guild_id, 1)
         embed = Embed(title = "Server Boards", description = description, color = Color.red())

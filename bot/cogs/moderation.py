@@ -84,7 +84,6 @@ class Moderation(commands.Cog):
         else:
             server_data = SERVERS.find_one({"_id": guild_id})
             SERVERS.update_one(server_data, {"$set": {choice_value: channel_id}})
-            logger.info(CHANNEL_SET.format(guild_id, choice_value, channel_id))
             await interaction.response.send_message(ephemeral=True, content="✅")
 
     @app_commands.command(description="Banish a user.")

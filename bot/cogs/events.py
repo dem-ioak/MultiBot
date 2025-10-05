@@ -18,11 +18,6 @@ import random
 
 import logging
 
-event_logger = logging.getLogger("events")
-data_logger = logging.getLogger("data")
-error_logger = logging.getLogger("errors")
-
-
 class Events(commands.Cog):
     def __init__(self, client):
         self.client = client
@@ -78,7 +73,6 @@ class Events(commands.Cog):
         """Handle DB Operations when bot joins a server"""
         guild_id = server.id
         guild_name = server.name
-        event_logger.info(GUILD_JOIN.format((guild_id, guild_name)))
 
         server_data = SERVERS.find_one({"_id": guild_id})
         curr_time = datetime.utcnow()
@@ -95,7 +89,6 @@ class Events(commands.Cog):
                 {"$set": {"entries": [], "current_page": 1}},
                 upsert=True,
             )
-            data_logger.info(GUILD_DATA_ADD.format((guild_id, guild_name)))
 
         # Add each user in the server to data
         for user in server.members:
@@ -106,18 +99,12 @@ class Events(commands.Cog):
                 if user_data is None:
                     user_obj = DataClasses.User(_id=primary_key)
                     USERS.insert_one(user_obj.__dict__)
-                    data_logger.info(
-                        USER_DATA_ADD.format(user.id, (guild_id, guild_name))
-                    )
 
                 if wrapped_data is None:
                     wrapped_obj = DataClasses.WrappedUser(
                         _id=primary_key, user_pings={"count": 0}
                     )
                     WRAPPED.insert_one(wrapped_obj.__dict__)
-                    data_logger.info(
-                        WRAPPED_DATA_ADD.format(user.id, (guild_id, guild_name))
-                    )
 
         # Add every text channel in the server to data
         for t_channel in server.text_channels:
@@ -128,11 +115,6 @@ class Events(commands.Cog):
             t_channel_obj = DataClasses.TChannel(_id=t_channel.id, created_at=curr_time)
 
             TEXT_CHANNELS.insert_one(t_channel_obj.__dict__)
-            data_logger.info(
-                CHANNEL_DATA_ADD.format(
-                    "TextChannel", t_channel.id, t_channel.name, (guild_id, guild_name)
-                )
-            )
 
         for v_channel in server.voice_channels:
             t_channel_data = TEXT_CHANNELS.find_one({"_id": v_channel.id})
@@ -143,11 +125,6 @@ class Events(commands.Cog):
                 _id=v_channel.id, owner=None, created_by=None, created_at=curr_time
             )
             VCS.insert_one(v_channel_obj.__dict__)
-            data_logger.info(
-                CHANNEL_DATA_ADD.format(
-                    "VoiceChannel", t_channel.id, v_channel.name, (guild_id, guild_name)
-                )
-            )
 
     @commands.Cog.listener()
     async def on_member_join(self, member):
@@ -155,7 +132,6 @@ class Events(commands.Cog):
         guild_id = member.guild.id
         guild_name = member.guild.name
         user_id = member.id
-        event_logger.info(USER_JOIN_SERVER.format(user_id, (guild_id, guild_name)))
 
         primary_key = {"guild_id": guild_id, "user_id": user_id}
         server_data = SERVERS.find_one({"_id": guild_id})
@@ -165,7 +141,6 @@ class Events(commands.Cog):
         if user_data is None:
             user_obj = DataClasses.User(_id=primary_key)
             USERS.insert_one(user_obj.__dict__)
-            data_logger.info(USER_DATA_ADD.format(user_id, (guild_id, guild_name)))
 
         # Log join event if server has a `logs` channel
         if server_data["logs_id"] != -1:
@@ -177,7 +152,6 @@ class Events(commands.Cog):
             try:
                 await member.add_roles(role)
             except Exception as e:
-                error_logger.error(f"Error occured when adding roles: {e}")
                 continue
 
         wrapped_data = WRAPPED.find_one({"_id": primary_key})
@@ -186,14 +160,12 @@ class Events(commands.Cog):
                 _id=primary_key, user_pings={"count": 0}
             )
             WRAPPED.insert_one(wrapped_user_obj.__dict__)
-            data_logger.info(WRAPPED_DATA_ADD.format(user_id, (guild_id, guild_name)))
 
     @commands.Cog.listener()
     async def on_member_remove(self, member):
         guild_id = member.guild.id
         guild_name = member.guild.name
         user_id = member.id
-        event_logger.info(USER_LEFT_SERVER.format(user_id, (guild_id, guild_name)))
 
     # Voice State
     @commands.Cog.listener()
@@ -225,7 +197,6 @@ class Events(commands.Cog):
 
         # Start a stream
         if not before.self_stream and after.self_stream:
-            data_logger.info(USER_START_STREAM.format(user_id, (guild_id, guild_name)))
             events.append(
                 DataClasses.VCEvent(
                     guild_id,
@@ -240,7 +211,6 @@ class Events(commands.Cog):
         if before.self_stream and (
             after.channel != before.channel or not after.self_stream
         ):
-            data_logger.info(USER_END_STREAM.format(user_id, (guild_id, guild_name)))
             events.append(
                 DataClasses.VCEvent(
                     guild_id,
@@ -256,11 +226,6 @@ class Events(commands.Cog):
 
             # If you left a VC
             if before.channel and before.channel.id != create_id:
-                data_logger.info(
-                    USER_LEFT_VC.format(
-                        user_id, before.channel.id, (guild_id, guild_name)
-                    )
-                )
                 events.append(
                     DataClasses.VCEvent(
                         guild_id,
@@ -294,17 +259,9 @@ class Events(commands.Cog):
                         created_by=user_id,
                         created_at=curr_time,
                     )
-                    data_logger.info(
-                        USER_CREATE_VC.format(user_id, (guild_id, guild_name))
-                    )
                     VCS.insert_one(channel_data.__dict__)
 
                 else:
-                    data_logger.info(
-                        USER_JOIN_VC.format(
-                            user_id, after.channel.id, (guild_id, guild_name)
-                        )
-                    )
                     events.append(
                         DataClasses.VCEvent(
                             guild_id,
@@ -330,7 +287,6 @@ class Events(commands.Cog):
             VC_EVENTS.insert_many(documents)
             limit, size = get_size_and_limit()
             if limit > 0 and size / limit > 0.9:
-                data_logger.info("Archiving vc_event data to prevent overflow")
                 archive_event_data()
 
     @commands.Cog.listener()
@@ -452,9 +408,6 @@ class Events(commands.Cog):
     async def on_guild_channel_delete(self, channel):
         is_text = isinstance(channel, discord.TextChannel)
         title = "TextChannel" if is_text else "VoiceChannel"
-        event_logger.info(
-            CHANNEL_DELETE.format(title, channel.id, channel.name, channel.guild.id)
-        )
 
         curr_time = datetime.utcnow()
         collection = TEXT_CHANNELS if is_text else VCS
@@ -466,21 +419,11 @@ class Events(commands.Cog):
     async def on_guild_channel_create(self, channel):
         curr_time = datetime.utcnow()
         if isinstance(channel, discord.TextChannel):
-            event_logger.info(
-                CHANNEL_CREATE.format(
-                    "TextChannel", channel.id, channel.name, channel.guild.id
-                )
-            )
             channel_data_obj = DataClasses.TChannel(
                 _id=channel.id, created_at=curr_time
             )
 
             TEXT_CHANNELS.insert_one(channel_data_obj.__dict__)
-            data_logger.info(
-                CHANNEL_DATA_ADD.format(
-                    "TextChannel", channel.id, channel.name, channel.guild.id
-                )
-            )
             # TODO: Banished stuff
 
         else:
@@ -492,11 +435,7 @@ class Events(commands.Cog):
                     _id=channel.id, owner=None, created_by=None, created_at=curr_time
                 )
                 VCS.insert_one(vc_data_obj.__dict__)
-            event_logger.info(
-                CHANNEL_CREATE.format(
-                    "VoiceChannel", channel.id, channel.name, channel.guild.id
-                )
-            )
+
 
     @tasks.loop(time=VIBE_TIME)
     async def vibes(self):

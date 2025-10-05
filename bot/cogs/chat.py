@@ -7,7 +7,6 @@ from util.log_messages import SNIPE_FAIL
 from util.buttons.poll_buttons import PollModal
 import logging
 
-error_logger = logging.getLogger("errors")
 NO_SNIPE = Embed(description="There is nothing to snipe in this channel", color = Color.red())
 
 
@@ -68,7 +67,6 @@ class Chat(commands.Cog):
 
         # Should never happen, log if does
         if tc_data is None:
-            error_logger.error(SNIPE_FAIL.format(channel_id, (guild_id, guild_name)))
             return 
         
         
@@ -96,7 +94,6 @@ class Chat(commands.Cog):
 
         # Should never happen, log if does
         if tc_data is None:
-            error_logger.error(SNIPE_FAIL.format(channel_id, (guild_id, guild_name)))
             return 
         
         
