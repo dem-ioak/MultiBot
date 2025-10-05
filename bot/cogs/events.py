@@ -303,7 +303,7 @@ class Events(commands.Cog):
                             after.channel.id,
                         )
                     )
-                    log.info("JOINED_VC" if before.channel.id != afk_corner else "JOINED_AFK")
+                    log.info("JOINED_VC" if after.channel.id != afk_corner else "JOINED_AFK")
 
         # Format Documents
         documents = [event.__dict__ for event in events]
