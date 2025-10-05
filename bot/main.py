@@ -64,7 +64,7 @@ async def on_app_command_error(
 
 
 async def main():
-    setup_logging()
+    setup_logging("bot/logs/bot.log")
     async with client:
         await client.start(CLIENT_KEY)
 
