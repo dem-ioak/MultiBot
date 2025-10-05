@@ -380,7 +380,7 @@ class Events(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message_delete(self, message):
-        log = get_logger(__name__, server=message.guild.name, user=member.author.name, channel=message.channel.name)
+        log = get_logger(__name__, server=message.guild.name, user=message.author.name, channel=message.channel.name)
         try:
             assert message.author != self.client.user
             assert not message.content.startswith(".")
