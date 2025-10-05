@@ -15,7 +15,7 @@ class Fun(commands.Cog):
     async def flip(self, interaction : discord.Interaction):
         
         log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
-        log.info("COMMAND_INVOKED: /flip")
+        log.info(f"COMMAND_INVOKED: /flip")
         
         choice = random.choice(["Heads", "Tails"])
         embed = Embed(
@@ -31,7 +31,7 @@ class Fun(commands.Cog):
     async def decide(self, interaction : discord.Interaction, args : str):
         
         log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
-        log.info("COMMAND_INVOKED: /decide")
+        log.info(f"COMMAND_INVOKED: /decide [args={args}]")
         
         first, second = Embed(), Embed()
         first.color = second.color = Color.dark_orange()
@@ -63,7 +63,7 @@ class Fun(commands.Cog):
     async def rng(self, interaction : discord.Interaction, first : str, last : str):
         
         log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
-        log.info("COMMAND_INVOKED: /rng")
+        log.info(f"COMMAND_INVOKED: /rng [first={first}, last={last}]")
         try:
             first = int(first)
             last = int(last)
@@ -96,7 +96,7 @@ class Fun(commands.Cog):
     async def leaderboard(self, interaction : discord.Interaction):
         
         log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
-        log.info("COMMAND_INVOKED: /leaderboard")
+        log.info(f"COMMAND_INVOKED: /leaderboard")
         server_users = USERS.find({"_id.guild_id" : interaction.guild.id})
         entries = []
         for user in server_users:

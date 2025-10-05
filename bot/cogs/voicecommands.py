@@ -17,7 +17,7 @@ class VoiceCommands(commands.Cog):
     @app_commands.command(name = "voicecommands", description = "Load interface to modify your voice channel")
     async def voicecommands(self, interaction : discord.Interaction):
         log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
-        log.info("COMMAND_INVOKED: /voicecommands")
+        log.info(f"COMMAND_INVOKED: /voicecommands")
         
         await interaction.response.send_message(embed = VOICE_COMMANDS_EMBED, view = VoiceView(self.client), ephemeral = True)
 

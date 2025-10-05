@@ -16,7 +16,7 @@ class Watchlist(commands.Cog):
     @app_commands.command(name = "watchlist", description = "Load this server's watchlist interface")
     async def watchlist(self, interaction : discord.Interaction):
         log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
-        log.info("COMMAND_INVOKED: /watchlist")
+        log.info(f"COMMAND_INVOKED: /watchlist")
         await interaction.response.send_message(embed = DEPRECEATED, ephemeral=True)
         # guild_id = interaction.guild.id
         # wl_data = WATCHLIST.find_one({"_id" : guild_id})

@@ -19,7 +19,7 @@ class Boards(commands.Cog):
     @app_commands.checks.cooldown(1, 120)
     async def board_view(self, interaction : discord.Interaction):
         log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
-        log.info("COMMAND_INVOKED: /board_view")
+        log.info(f"COMMAND_INVOKED: /boards")
         await interaction.response.send_message(embed = DEPRECEATED, ephemeral=True)
         # guild_id = interaction.guild.id
         # embed = Embed(title = "Server Boards", color = Color.red())

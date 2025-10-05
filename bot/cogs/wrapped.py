@@ -241,7 +241,7 @@ class Wrapped(commands.Cog):
     @app_commands.command(description="Deliver Wrapped")
     async def wrapped(self, interaction: discord.Interaction):
         log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
-        log.info("COMMAND_INVOKED: /wrapped")
+        log.info(f"COMMAND_INVOKED: /wrapped")
         
         user_id = interaction.user.id
         server_ids = list(
@@ -274,7 +274,7 @@ class Wrapped(commands.Cog):
     @app_commands.command(description="Deliver Wrapped")
     async def announce(self, interaction: discord.Interaction):
         log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
-        log.info("COMMAND_INVOKED: /announce")
+        log.info(f"COMMAND_INVOKED: /announce")
         if interaction.user.id != 739618992393682974:
             await interaction.response.send_message(embed = FORBIDDEN_COMMAND, ephemeral=True)
             return

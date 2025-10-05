@@ -21,6 +21,7 @@ class Birthday(commands.Cog):
     @app_commands.choices(month = MONTH_CHOICES)
     async def set(self, interaction : discord.Interaction, month : Choice[int], day : str, year : str):
         log = get_logger(__name__, server = interaction.guild.name, user = interaction.user.name)
+        log.info(f"COMMAND_INVOKED: /birthday set [month={month}, day={day}, year={year}]")
         current_day = date.today()
         month_num = month.value
         try:

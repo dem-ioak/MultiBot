@@ -18,7 +18,7 @@ class Chat(commands.Cog):
     async def poll(self, interaction : discord.Interaction):
         
         log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
-        log.info("COMMAND_INVOKED: /poll")
+        log.info(f"COMMAND_INVOKED: /poll")
         
         guild_id = interaction.guild.id
         user_id = interaction.user.id
@@ -40,7 +40,7 @@ class Chat(commands.Cog):
     async def avatar(self, interaction : discord.Interaction, user : discord.Member = None):
         
         log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
-        log.info("COMMAND_INVOKED: /avatar")
+        log.info(f"COMMAND_INVOKED: /avatar [user={user.name if user else interaction.user.name}]")
         
         embed = Embed(color = Color.random())
         if user:
@@ -56,7 +56,7 @@ class Chat(commands.Cog):
     async def savatar(self, interaction : discord.Interaction, user : discord.Member = None):
         
         log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
-        log.info("COMMAND_INVOKED: /savatar")
+        log.info(f"COMMAND_INVOKED: /savatar [user={user.name if user else interaction.user.name}]")
         
         embed = Embed(color = Color.random())
         if user:
@@ -72,7 +72,7 @@ class Chat(commands.Cog):
     async def s(self, interaction : discord.Interaction):
         
         log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
-        log.info("COMMAND_INVOKED: /s")
+        log.info(f"COMMAND_INVOKED: /s")
         channel_id = interaction.channel.id
         guild_id = interaction.guild.id
         guild_name = interaction.guild.name
@@ -103,7 +103,7 @@ class Chat(commands.Cog):
     async def es(self, interaction : discord.Interaction):
         
         log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
-        log.info("COMMAND_INVOKED: /es")
+        log.info(f"COMMAND_INVOKED: /es")
         channel_id = interaction.channel.id
         guild_id = interaction.guild.id
         guild_name = interaction.guild.name
