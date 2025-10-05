@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from discord.app_commands import AppCommandError
 from discord import Embed, Color, app_commands
 import traceback
-import logging
+from util.log_manager import setup_logging, get_logger
 
 load_dotenv()
 CLIENT_KEY = os.getenv("CLIENT_KEY")
@@ -64,6 +64,7 @@ async def on_app_command_error(
 
 
 async def main():
+    setup_logging()
     async with client:
         await client.start(CLIENT_KEY)
 
