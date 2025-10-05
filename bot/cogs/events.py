@@ -549,6 +549,11 @@ class Events(commands.Cog):
                 continue
 
             channel = self.client.get_channel(channel_id)
+            
+            # Birthday channel could not be found, skipping
+            if not channel:
+                continue
+            
             embed = Embed(title="🎂 Today's Birthdays", color=Color.orange())
             embed.set_footer(text="Set your birthday using /birthday set!")
 
