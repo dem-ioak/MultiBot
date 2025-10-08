@@ -14,14 +14,8 @@ from util.constants import SERVERS, BOARDS, WATCHLIST, WATCHLIST_EMBED
 from util.helper_functions import board_view_description, generate_wl_page
 from util.buttons.board_buttons import BoardView, BoardListView
 from util.buttons.watchlist_buttons import WatchListView
+from util.log_manager import get_logger
 import random
-
-import logging
-
-event_logger = logging.getLogger("events")
-data_logger = logging.getLogger("data")
-error_logger = logging.getLogger("errors")
-
 
 class Events(commands.Cog):
     def __init__(self, client):
@@ -41,6 +35,8 @@ class Events(commands.Cog):
     @commands.Cog.listener()
     async def on_ready(self):
         for server in self.client.guilds:
+            log = get_logger(__name__, server=server.name)
+            log.info("SETUP: Refreshing Watchlist / Leaderboards")
             server_id = server.id
             board_data = BOARDS.find_one({"_id": server_id})
             watchlist_data = WATCHLIST.find_one({"_id": server_id})
@@ -58,6 +54,7 @@ class Events(commands.Cog):
                 )
                 view = BoardListView(server_id, None, board_message)
                 await board_message.edit(embed=embed, view=view)
+                log.info("SETUP: Successfully Refreshed BOARDS")
 
             if "message_id" in watchlist_data and "channel_id" in watchlist_data:
                 watchlist_channel_id = watchlist_data["channel_id"]
@@ -71,14 +68,16 @@ class Events(commands.Cog):
                 embed = WATCHLIST_EMBED if not entries else generate_wl_page(1, entries)
                 view = WatchListView(self, watchlist_message)
                 await watchlist_message.edit(embed=embed, view=view)
+                log.info("SETUP: Successfully Refreshed WATCHLIST")
 
     # User / Bot Joining & Leaving
     @commands.Cog.listener()
     async def on_guild_join(self, server):
         """Handle DB Operations when bot joins a server"""
+        log = get_logger(__name__, server=server.name)
+        log.info("SERVER_SETUP: Bot has been added to a new server, setting up data")
         guild_id = server.id
         guild_name = server.name
-        event_logger.info(GUILD_JOIN.format((guild_id, guild_name)))
 
         server_data = SERVERS.find_one({"_id": guild_id})
         curr_time = datetime.utcnow()
@@ -95,7 +94,6 @@ class Events(commands.Cog):
                 {"$set": {"entries": [], "current_page": 1}},
                 upsert=True,
             )
-            data_logger.info(GUILD_DATA_ADD.format((guild_id, guild_name)))
 
         # Add each user in the server to data
         for user in server.members:
@@ -106,18 +104,12 @@ class Events(commands.Cog):
                 if user_data is None:
                     user_obj = DataClasses.User(_id=primary_key)
                     USERS.insert_one(user_obj.__dict__)
-                    data_logger.info(
-                        USER_DATA_ADD.format(user.id, (guild_id, guild_name))
-                    )
 
                 if wrapped_data is None:
                     wrapped_obj = DataClasses.WrappedUser(
                         _id=primary_key, user_pings={"count": 0}
                     )
                     WRAPPED.insert_one(wrapped_obj.__dict__)
-                    data_logger.info(
-                        WRAPPED_DATA_ADD.format(user.id, (guild_id, guild_name))
-                    )
 
         # Add every text channel in the server to data
         for t_channel in server.text_channels:
@@ -128,11 +120,6 @@ class Events(commands.Cog):
             t_channel_obj = DataClasses.TChannel(_id=t_channel.id, created_at=curr_time)
 
             TEXT_CHANNELS.insert_one(t_channel_obj.__dict__)
-            data_logger.info(
-                CHANNEL_DATA_ADD.format(
-                    "TextChannel", t_channel.id, t_channel.name, (guild_id, guild_name)
-                )
-            )
 
         for v_channel in server.voice_channels:
             t_channel_data = TEXT_CHANNELS.find_one({"_id": v_channel.id})
@@ -143,11 +130,6 @@ class Events(commands.Cog):
                 _id=v_channel.id, owner=None, created_by=None, created_at=curr_time
             )
             VCS.insert_one(v_channel_obj.__dict__)
-            data_logger.info(
-                CHANNEL_DATA_ADD.format(
-                    "VoiceChannel", t_channel.id, v_channel.name, (guild_id, guild_name)
-                )
-            )
 
     @commands.Cog.listener()
     async def on_member_join(self, member):
@@ -155,7 +137,9 @@ class Events(commands.Cog):
         guild_id = member.guild.id
         guild_name = member.guild.name
         user_id = member.id
-        event_logger.info(USER_JOIN_SERVER.format(user_id, (guild_id, guild_name)))
+        
+        log = get_logger(__name__, server=guild_name, user=member.name)
+        log.info("New user joined this server, setting up their data")
 
         primary_key = {"guild_id": guild_id, "user_id": user_id}
         server_data = SERVERS.find_one({"_id": guild_id})
@@ -165,7 +149,7 @@ class Events(commands.Cog):
         if user_data is None:
             user_obj = DataClasses.User(_id=primary_key)
             USERS.insert_one(user_obj.__dict__)
-            data_logger.info(USER_DATA_ADD.format(user_id, (guild_id, guild_name)))
+            log.info("Successfully inserted new user's data into the database")
 
         # Log join event if server has a `logs` channel
         if server_data["logs_id"] != -1:
@@ -177,7 +161,7 @@ class Events(commands.Cog):
             try:
                 await member.add_roles(role)
             except Exception as e:
-                error_logger.error(f"Error occured when adding roles: {e}")
+                log.error("Failed to add auto role to user. The role has likely been deleted.")
                 continue
 
         wrapped_data = WRAPPED.find_one({"_id": primary_key})
@@ -186,14 +170,15 @@ class Events(commands.Cog):
                 _id=primary_key, user_pings={"count": 0}
             )
             WRAPPED.insert_one(wrapped_user_obj.__dict__)
-            data_logger.info(WRAPPED_DATA_ADD.format(user_id, (guild_id, guild_name)))
+            log.info("Successfully inserted new user's WRAPPED data into the database")
 
     @commands.Cog.listener()
     async def on_member_remove(self, member):
         guild_id = member.guild.id
         guild_name = member.guild.name
         user_id = member.id
-        event_logger.info(USER_LEFT_SERVER.format(user_id, (guild_id, guild_name)))
+        log = get_logger(__name__, server=guild_name, user=member.name)
+        log.info("This user has left the server.")
 
     # Voice State
     @commands.Cog.listener()
@@ -201,6 +186,7 @@ class Events(commands.Cog):
         guild_id = member.guild.id
         guild_name = member.guild.name
         user_id = member.id
+        log = get_logger(__name__, server=guild_name, user=member.name)
         server_data = SERVERS.find_one({"_id": guild_id})
 
         create_id = server_data["join_to_create"]
@@ -218,6 +204,16 @@ class Events(commands.Cog):
                     if len(before.channel.members) == 0:
                         await before.channel.delete()
                         VCS.update_one(vc_data, {"$set": {"deleted_at": curr_time}})
+                        try:
+                            start_time = vc_data["start_time"]
+                            duration = curr_time - start_time
+                            seconds = int(duration.total_seconds())
+                            hours, remainder = divmod(seconds, 3600)
+                            minutes, seconds = divmod(remainder, 60)
+                            duration_str = f"{hours}h {minutes}m {seconds}s" if hours else f"{minutes}m {seconds}s"
+                        except:
+                            duration_str = "UNKNOWN"
+                        log.info(f"Voice channel concluded after {duration_str}")
 
         # Wrapped Stuff
         afk_corner = server_data["afk_corner"]
@@ -225,7 +221,6 @@ class Events(commands.Cog):
 
         # Start a stream
         if not before.self_stream and after.self_stream:
-            data_logger.info(USER_START_STREAM.format(user_id, (guild_id, guild_name)))
             events.append(
                 DataClasses.VCEvent(
                     guild_id,
@@ -235,12 +230,12 @@ class Events(commands.Cog):
                     after.channel.id,
                 )
             )
+            log.info("STREAM_START")
 
         # End a stream
         if before.self_stream and (
             after.channel != before.channel or not after.self_stream
         ):
-            data_logger.info(USER_END_STREAM.format(user_id, (guild_id, guild_name)))
             events.append(
                 DataClasses.VCEvent(
                     guild_id,
@@ -250,17 +245,13 @@ class Events(commands.Cog):
                     before.channel.id,
                 )
             )
+            log.info("STREAM_END")
 
         # The event that triggered this method was a movement between VCs (or leaving  / joining)
         if changed_vc:
 
             # If you left a VC
             if before.channel and before.channel.id != create_id:
-                data_logger.info(
-                    USER_LEFT_VC.format(
-                        user_id, before.channel.id, (guild_id, guild_name)
-                    )
-                )
                 events.append(
                     DataClasses.VCEvent(
                         guild_id,
@@ -274,6 +265,7 @@ class Events(commands.Cog):
                         before.channel.id,
                     )
                 )
+                log.info("LEFT_VC" if before.channel.id != afk_corner else "LEFT_AFK")
 
             # If you joined a VC
             if after.channel:
@@ -294,17 +286,10 @@ class Events(commands.Cog):
                         created_by=user_id,
                         created_at=curr_time,
                     )
-                    data_logger.info(
-                        USER_CREATE_VC.format(user_id, (guild_id, guild_name))
-                    )
                     VCS.insert_one(channel_data.__dict__)
+                    log.info("CREATED_VC")
 
                 else:
-                    data_logger.info(
-                        USER_JOIN_VC.format(
-                            user_id, after.channel.id, (guild_id, guild_name)
-                        )
-                    )
                     events.append(
                         DataClasses.VCEvent(
                             guild_id,
@@ -318,6 +303,7 @@ class Events(commands.Cog):
                             after.channel.id,
                         )
                     )
+                    log.info("JOINED_VC" if after.channel.id != afk_corner else "JOINED_AFK")
 
         # Format Documents
         documents = [event.__dict__ for event in events]
@@ -330,7 +316,6 @@ class Events(commands.Cog):
             VC_EVENTS.insert_many(documents)
             limit, size = get_size_and_limit()
             if limit > 0 and size / limit > 0.9:
-                data_logger.info("Archiving vc_event data to prevent overflow")
                 archive_event_data()
 
     @commands.Cog.listener()
@@ -395,6 +380,7 @@ class Events(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message_delete(self, message):
+        log = get_logger(__name__, server=message.guild.name, user=message.author.name, channel=message.channel.name)
         try:
             assert message.author != self.client.user
             assert not message.content.startswith(".")
@@ -419,13 +405,14 @@ class Events(commands.Cog):
                     }
                 },
             )
-
+            log.info("Message has been deleted, this text channel's snipe has been updated")
             logs = server_data["logs_id"]
             if logs != -1:
                 pass
 
     @commands.Cog.listener()
     async def on_message_edit(self, before, after):
+        log = get_logger(__name__, server=before.guild.name, user=before.author.name, channel=before.channel.name)
         try:
             assert before.author != self.client.user
             assert "https://" not in before.content
@@ -444,43 +431,38 @@ class Events(commands.Cog):
                 {"$set": {"edited_author": user_id, "edited_content": before.content}},
             )
 
+            log.info("Message has been edited, this text channel's snipe has been updated")
             logs = server_data["logs_id"]
             if logs != -1:
                 pass
 
     @commands.Cog.listener()
     async def on_guild_channel_delete(self, channel):
+        log = get_logger(__name__, server=channel.guild.name, channel=channel.name)
         is_text = isinstance(channel, discord.TextChannel)
-        title = "TextChannel" if is_text else "VoiceChannel"
-        event_logger.info(
-            CHANNEL_DELETE.format(title, channel.id, channel.name, channel.guild.id)
-        )
+        title = "TEXT_CHANNEL" if is_text else "VOICE_CHANNEL"
+        log.info(f"{title}_DELETE")
 
         curr_time = datetime.utcnow()
         collection = TEXT_CHANNELS if is_text else VCS
         channel_data = collection.find_one({"_id": channel.id})
         if channel_data is not None:
             collection.update_one(channel_data, {"$set": {"deleted_at": curr_time}})
+            log.info("Succesfully updated this channel's deletion date")
 
     @commands.Cog.listener()
     async def on_guild_channel_create(self, channel):
         curr_time = datetime.utcnow()
-        if isinstance(channel, discord.TextChannel):
-            event_logger.info(
-                CHANNEL_CREATE.format(
-                    "TextChannel", channel.id, channel.name, channel.guild.id
-                )
-            )
+        log = get_logger(__name__, server=channel.guild.name, channel=channel.name)
+        title = "TEXT_CHANNEL" if is_text else "VOICE_CHANNEL"
+        log.info(f"{title}_CREATE")
+        is_text = isinstance(channel, discord.TextChannel)
+        if is_text:
             channel_data_obj = DataClasses.TChannel(
                 _id=channel.id, created_at=curr_time
             )
 
             TEXT_CHANNELS.insert_one(channel_data_obj.__dict__)
-            data_logger.info(
-                CHANNEL_DATA_ADD.format(
-                    "TextChannel", channel.id, channel.name, channel.guild.id
-                )
-            )
             # TODO: Banished stuff
 
         else:
@@ -492,21 +474,20 @@ class Events(commands.Cog):
                     _id=channel.id, owner=None, created_by=None, created_at=curr_time
                 )
                 VCS.insert_one(vc_data_obj.__dict__)
-            event_logger.info(
-                CHANNEL_CREATE.format(
-                    "VoiceChannel", channel.id, channel.name, channel.guild.id
-                )
-            )
+        log.info("Succesfully created database entry for this channel")
+
 
     @tasks.loop(time=VIBE_TIME)
     async def vibes(self):
         for guild in self.client.guilds:
+            log = get_logger(__name__, server=guild.name)
             server_data = SERVERS.find_one({"_id": guild.id})
             channel_id = server_data["vibe_id"]
             gifs = server_data["vibe_gifs"]
             if server_data["vibes"] and channel_id != -1:
                 channel = self.client.get_channel(channel_id)
                 result = random.randint(1, 10)
+                log.info(f"GOOD_VIBES_RESULT : {result}")
 
                 # Bad Vibes 1
                 if result == 1:
@@ -539,6 +520,7 @@ class Events(commands.Cog):
         curr_month, curr_day, curr_year = today.month, today.day, today.year
         description = ""
         for guild in self.client.guilds:
+            log = get_logger(__name__, server=guild.name)
             server_data = SERVERS.find_one({"_id": guild.id})
             all_birthdays = USERS.find(
                 {"_id.guild_id": guild.id, "birthday": {"$ne": None}}
@@ -546,12 +528,14 @@ class Events(commands.Cog):
             found = False
             channel_id = server_data["vibe_id"]
             if all_birthdays is None:
+                log.info("No birthdays found for this server, moving on...")
                 continue
 
             channel = self.client.get_channel(channel_id)
             
             # Birthday channel could not be found, skipping
             if not channel:
+                log.info("Birthday's exist in this server, but there is no channel to announce to.")
                 continue
             
             embed = Embed(title="🎂 Today's Birthdays", color=Color.orange())
@@ -577,6 +561,7 @@ class Events(commands.Cog):
                 embed.description = description
                 await channel.send(embed=embed)
                 await channel.send("@everyone THERE'S BIRTHDAY(s) TODAY!!!!!")
+                log.info("Succesfully announced today's birthdays")
 
 
 async def setup(client):

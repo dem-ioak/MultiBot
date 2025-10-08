@@ -7,40 +7,11 @@ from dotenv import load_dotenv
 from discord.app_commands import AppCommandError
 from discord import Embed, Color, app_commands
 import traceback
-import logging
+from util.log_manager import setup_logging, get_logger
 
 load_dotenv()
 CLIENT_KEY = os.getenv("CLIENT_KEY")
 APPLICATION_ID = os.getenv("APPLICATION_ID")
-
-formatter = logging.Formatter("[%(levelname)s] %(asctime)s - %(message)s")
-
-
-def configure_logger(name, level, filename):
-    """Configure custom logger with given attributes"""
-
-    LOG_DIR = "bot/logs/"
-
-    logger = logging.getLogger(name)
-    logger.setLevel(level)
-    handler = logging.FileHandler(LOG_DIR + filename)
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-
-
-configs = [
-    {"name": "events", "level": logging.INFO, "filename": "events.log"},
-    {"name": "errors", "level": logging.DEBUG, "filename": "errors.log"},
-    {"name": "data", "level": logging.INFO, "filename": "data.log"},
-    {"name": "board", "level": logging.INFO, "filename": "boards.log"},
-]
-
-for config in configs:
-    configure_logger(**config)
-
-event_logger = logging.getLogger("events")
-error_logger = logging.getLogger("errors")
-
 
 class MyBot(commands.Bot):
     def __init__(self):
@@ -53,30 +24,28 @@ class MyBot(commands.Bot):
     async def setup_hook(self):
         cog_count, cogs_loaded = await self.load_cogs()
         await self.tree.sync()
-        event_logger.info(
-            f"Bot is Online: {cogs_loaded}/{cog_count} Cogs Successfully Loaded"
-        )
 
     async def load_cogs(self):
+        log = get_logger(__name__)
         count = 0
         success = 0
         for filename in os.listdir("bot/cogs"):
+            log.info(f"Attempting to load cog: {filename}")
             if filename.endswith(".py") and "__init__" not in filename:
                 count += 1
                 try:
                     await self.load_extension(f"cogs.{filename[:-3]}")
                     success += 1
                 except Exception as e:
-                    error_logger.error(
-                        f"Failed to load cog {filename} with Exception {e}",
-                        exc_info=True,
-                    )
+                    pass
 
                     continue
+                
+        log.info(f"Successfully loaded {success}/{count} cogs.")
         return count, success
 
     async def on_error(self, *args, **kwargs):
-        error_logger.error("Error Occured", exc_info=True)
+        pass
 
 
 client = MyBot()
@@ -95,12 +64,11 @@ async def on_app_command_error(
             ephemeral=True,
         )
     else:
-        error_logger.error(
-            f"Error while using {interaction.command.name}", exc_info=True
-        )
+        pass
 
 
 async def main():
+    setup_logging("bot/logs/bot.log")
     async with client:
         await client.start(CLIENT_KEY)
 

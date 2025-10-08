@@ -4,6 +4,7 @@ from discord import Embed, Color, app_commands
 from discord.app_commands import Choice
 
 from util.constants import MONTH_DAYS, MONTH_NAMES, INTEGER_CONVERSION_FAIL, USERS
+from util.log_manager import get_logger
 from datetime import date
 
 MONTH_CHOICES = [Choice(name = MONTH_NAMES[i], value = i) for i in range(1, 13)]
@@ -19,6 +20,8 @@ class Birthday(commands.Cog):
     @birthday.command(description = "Set your birthday")
     @app_commands.choices(month = MONTH_CHOICES)
     async def set(self, interaction : discord.Interaction, month : Choice[int], day : str, year : str):
+        log = get_logger(__name__, server = interaction.guild.name, user = interaction.user.name)
+        log.info(f"COMMAND_INVOKED: /birthday set [month={month}, day={day}, year={year}]")
         current_day = date.today()
         month_num = month.value
         try:
@@ -47,9 +50,14 @@ class Birthday(commands.Cog):
                 description=BIRTHDAY_SUCCESS.format(MONTH_NAMES[month_num], day, year),
                 color = Color.blue()
             ))
-    
+            log.info(f"Successfully set this user's birthday to : {birthday_str}")
+
+
     @birthday.command(description = "Generate a list of the nearest birthdays")
     async def list(self, interaction : discord.Interaction):
+        log = get_logger(__name__, server = interaction.guild.name, user = interaction.user.name)
+        log.info("COMMAND_INVOKED: /birthday list")
+        
         all_birthdays = USERS.find({"_id.guild_id" : interaction.guild.id, "birthday" : {"$ne" : None}})
         sorted_days = []
         today = date.today()

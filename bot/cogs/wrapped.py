@@ -6,6 +6,7 @@ import os
 from collections import defaultdict
 
 from util.constants import USERS, FORBIDDEN_COMMAND
+from util.log_manager import get_logger
 
 BOARD_EMOJIS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
 
@@ -239,7 +240,9 @@ class Wrapped(commands.Cog):
 
     @app_commands.command(description="Deliver Wrapped")
     async def wrapped(self, interaction: discord.Interaction):
-
+        log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
+        log.info(f"COMMAND_INVOKED: /wrapped")
+        
         user_id = interaction.user.id
         server_ids = list(
             sorted(int(id_) for id_ in os.listdir(WRAPPED_DIR))
@@ -270,6 +273,8 @@ class Wrapped(commands.Cog):
     
     @app_commands.command(description="Deliver Wrapped")
     async def announce(self, interaction: discord.Interaction):
+        log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
+        log.info(f"COMMAND_INVOKED: /announce")
         if interaction.user.id != 739618992393682974:
             await interaction.response.send_message(embed = FORBIDDEN_COMMAND, ephemeral=True)
             return

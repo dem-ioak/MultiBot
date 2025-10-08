@@ -3,6 +3,7 @@ from discord import Embed, app_commands, Color
 from discord.ext import commands, tasks
 
 from util.buttons.voicecommands_buttons import VoiceView
+from util.log_manager import get_logger
 
 VOICE_COMMANDS_EMBED = Embed(
     title="Voice Channel Commands", 
@@ -15,6 +16,9 @@ class VoiceCommands(commands.Cog):
 
     @app_commands.command(name = "voicecommands", description = "Load interface to modify your voice channel")
     async def voicecommands(self, interaction : discord.Interaction):
+        log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
+        log.info(f"COMMAND_INVOKED: /voicecommands")
+        
         await interaction.response.send_message(embed = VOICE_COMMANDS_EMBED, view = VoiceView(self.client), ephemeral = True)
 
 async def setup(client):

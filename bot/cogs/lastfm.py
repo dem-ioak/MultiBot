@@ -8,6 +8,7 @@ from util.classes.FMUser import FMUser, convert_title
 from util.constants import USERS
 
 import os
+from util.log_manager import get_logger
 import requests
 from dotenv import load_dotenv
 
@@ -84,6 +85,8 @@ class Lastfm(commands.Cog):
         target: discord.Member = None,
         time: Choice[str] = None,
     ):
+        log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
+        log.info(f"COMMAND_INVOKED: /lastfm topartists [target={target}, time={time}]")
         await interaction.response.defer()
         embed = handle_get_top_call(interaction, target, time, "artists")
         await interaction.followup.send(embed=embed)
@@ -98,6 +101,8 @@ class Lastfm(commands.Cog):
         target: discord.Member = None,
         time: Choice[str] = None,
     ):
+        log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
+        log.info(f"COMMAND_INVOKED: /lastfm topalbums [target={target}, time={time}]")
         await interaction.response.defer()
         embed = handle_get_top_call(interaction, target, time, "albums")
         await interaction.followup.send(embed=embed)
@@ -112,6 +117,8 @@ class Lastfm(commands.Cog):
         target: discord.Member = None,
         time: Choice[str] = None,
     ):
+        log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
+        log.info(f"COMMAND_INVOKED: /lastfm toptracks [target={target}, time={time}]")
         await interaction.response.defer()
         embed = handle_get_top_call(interaction, target, time, "tracks")
         await interaction.followup.send(embed=embed)
@@ -123,6 +130,8 @@ class Lastfm(commands.Cog):
     async def nowplaying(
         self, interaction: discord.Interaction, target: discord.Member = None
     ):
+        log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
+        log.info(f"COMMAND_INVOKED: /lastfm nowplaying [target={target}]")
         guild_id = interaction.guild.id
         target = target if target else interaction.user
         user_id = target.id if target else interaction.user.id
@@ -155,6 +164,8 @@ class Lastfm(commands.Cog):
         target: discord.Member = None,
         artist: str = None,
     ):
+        log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
+        log.info(f"COMMAND_INVOKED: /lastfm toptracksartist [target={target}, artist={artist}]")
         embed = Embed(color=Color.red())
         guild_id = interaction.guild.id
         target = target if target else interaction.user
@@ -180,6 +191,8 @@ class Lastfm(commands.Cog):
 
     @lastfm.command(name="set", description="Set your lastfm username")
     async def set(self, interaction: discord.Interaction, username: str):
+        log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
+        log.info(f"COMMAND_INVOKED: /lastfm set [username={username}]")
         fm_obj = FMUser(username)
         guild_id = interaction.guild.id
         user_id = interaction.user.id
@@ -203,6 +216,8 @@ class Lastfm(commands.Cog):
         description="Compare every user's playcount of a given artist",
     )
     async def compareartist(self, interaction: discord.Interaction):
+        log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
+        log.info(f"COMMAND_INVOKED: /lastfm compareartist")
         guild_id = interaction.guild.id
         user_id = interaction.user.id
         primary_key = {"guild_id": guild_id, "user_id": user_id}
@@ -252,6 +267,8 @@ class Lastfm(commands.Cog):
     async def comparetrack(
         self, interaction: discord.Interaction, target: discord.Member = None
     ):
+        log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
+        log.info(f"COMMAND_INVOKED: /lastfm comparetrack [target={target}]")
         guild_id = interaction.guild.id
         user_id = interaction.user.id
         primary_key = {"guild_id": guild_id, "user_id": user_id}
@@ -304,6 +321,8 @@ class Lastfm(commands.Cog):
         album: str = None,
         artist: str = None
     ):
+        log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
+        log.info(f"COMMAND_INVOKED: /lastfm playsalbum [target={target}, album={album}, artist={artist}]")
         guild_id = interaction.guild.id
         target = target if target else interaction.user
         user_id = target.id

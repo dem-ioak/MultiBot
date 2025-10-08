@@ -5,9 +5,8 @@ from discord.ext import commands
 from util.constants import TEXT_CHANNELS, SERVERS, POLL_FAIL
 from util.log_messages import SNIPE_FAIL
 from util.buttons.poll_buttons import PollModal
-import logging
+from util.log_manager import get_logger
 
-error_logger = logging.getLogger("errors")
 NO_SNIPE = Embed(description="There is nothing to snipe in this channel", color = Color.red())
 
 
@@ -17,7 +16,10 @@ class Chat(commands.Cog):
     
     @app_commands.command(description = "Create a poll for the server")
     async def poll(self, interaction : discord.Interaction):
-
+        
+        log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
+        log.info(f"COMMAND_INVOKED: /poll")
+        
         guild_id = interaction.guild.id
         user_id = interaction.user.id
         server_data = SERVERS.find_one({"_id" : guild_id})
@@ -36,6 +38,10 @@ class Chat(commands.Cog):
 
     @app_commands.command(description="Display any users avatar.")
     async def avatar(self, interaction : discord.Interaction, user : discord.Member = None):
+        
+        log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
+        log.info(f"COMMAND_INVOKED: /avatar [user={user.name if user else interaction.user.name}]")
+        
         embed = Embed(color = Color.random())
         if user:
             embed.set_image(url=user.avatar.url)
@@ -48,6 +54,10 @@ class Chat(commands.Cog):
 
     @app_commands.command(description="Display any users server avatar (default if None)")
     async def savatar(self, interaction : discord.Interaction, user : discord.Member = None):
+        
+        log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
+        log.info(f"COMMAND_INVOKED: /savatar [user={user.name if user else interaction.user.name}]")
+        
         embed = Embed(color = Color.random())
         if user:
             embed.set_image(url=user.display_avatar.url)
@@ -60,6 +70,9 @@ class Chat(commands.Cog):
     
     @app_commands.command(description="Display the most recently deleted message in a channel")
     async def s(self, interaction : discord.Interaction):
+        
+        log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
+        log.info(f"COMMAND_INVOKED: /s")
         channel_id = interaction.channel.id
         guild_id = interaction.guild.id
         guild_name = interaction.guild.name
@@ -68,7 +81,6 @@ class Chat(commands.Cog):
 
         # Should never happen, log if does
         if tc_data is None:
-            error_logger.error(SNIPE_FAIL.format(channel_id, (guild_id, guild_name)))
             return 
         
         
@@ -89,6 +101,9 @@ class Chat(commands.Cog):
 
     @app_commands.command(description="Display the most recently edited message in a channel")
     async def es(self, interaction : discord.Interaction):
+        
+        log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
+        log.info(f"COMMAND_INVOKED: /es")
         channel_id = interaction.channel.id
         guild_id = interaction.guild.id
         guild_name = interaction.guild.name
@@ -96,7 +111,6 @@ class Chat(commands.Cog):
 
         # Should never happen, log if does
         if tc_data is None:
-            error_logger.error(SNIPE_FAIL.format(channel_id, (guild_id, guild_name)))
             return 
         
         
@@ -121,6 +135,5 @@ async def setup(client):
 
 
 
-        
 
-    
+
