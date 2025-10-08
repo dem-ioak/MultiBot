@@ -486,26 +486,21 @@ class Events(commands.Cog):
             gifs = server_data["vibe_gifs"]
             if server_data["vibes"] and channel_id != -1:
                 channel = self.client.get_channel(channel_id)
-                result = random.randint(1, 10)
+                result = random.randint(1, 100)
                 log.info(f"GOOD_VIBES_RESULT : {result}")
 
                 # Bad Vibes 1
-                if result == 1:
+                if result <= 5:
                     await channel.send(BAD_VIBES_GIF)
                     await channel.send(BAD_VIBES_MESSAGE)
 
                 # Magnificent Vibes
-                elif result == 2:
+                elif result <= 10:
                     await channel.send(MAGNIFICENT_VIBES_GIF)
                     await channel.send(MAGNIFICENT_VIBES_MESSAGE)
 
-                # Regular Vibes
-                elif result <= 4:
-                    await channel.send(REGULAR_VIBES_DEFAULT_MESSAGE)
-                    await channel.send(REGULAR_VIBES_MESSAGE)
-
                 # Good Vibes
-                else:
+                elif result <= 99:
                     gif = (
                         GOOD_VIBES_DEFAULT_GIF
                         if len(gifs) == 0
@@ -513,6 +508,11 @@ class Events(commands.Cog):
                     )
                     await channel.send(gif)
                     await channel.send(GOOD_VIBES_MESSAGE)
+                    
+                # Chopped Chin Vibes
+                else:
+                    await channel.send(CC_VIBES_GIF)
+                    await channel.send(CC_VIBES_MESSAGE)
 
     @tasks.loop(time=MIDNIGHT)
     async def birthday(self):
