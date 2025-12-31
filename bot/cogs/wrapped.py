@@ -17,8 +17,8 @@ SERVER_NAMES = {
 }
 
 SHARE_CHANNELS = {
-    1118721668970467428: 1320255443641307167,
-    529893177524617221: 1319807972842405929,
+    1118721668970467428: 1455772947884150894,
+    529893177524617221: 1455772146469966001,
     979199758591733780: 1320886452183236678,
 }
 
@@ -34,7 +34,7 @@ IMAGE_FILE_NAMES = [
 
 BASE_TEXT = "Here are your {} stats!"
 LAST_PAGE = 6
-WRAPPED_DIR = "Wrapped2024"
+WRAPPED_DIR = "Wrapped2025"
 FOOTER_TEXT = 'If at any point you get a response of "Interaction Failed", try again, or you can request your wrapped again once every 60 seconds.'
 
 HEADER_TEXT = [
@@ -44,11 +44,11 @@ HEADER_TEXT = [
     "Here are some general server stats!",
     BASE_TEXT.format("***MISCELLANEOUS***"),
     BASE_TEXT.format("***MISCELLANEOUS***"),  
-    "To share your 2024 Wrapped with this server, click the green 📨 button below!"
+    "To share your 2025 Wrapped with this server, click the green 📨 button below!"
 ]
 
 WRAPPED_ALREADY_SENT = Embed(description="Your wrapped has already been sent to this server!", color = Color.red())
-NOT_ELIGIBLE = Embed(description="Sorry, but you're not eligible for a 2024 Wrapped in any Yeat Bot server. This is because there was not enough activity to create one.",
+NOT_ELIGIBLE = Embed(description="Sorry, but you're not eligible for a 2025 Wrapped in any Yeat Bot server. This is because there was not enough activity to create one.",
                      color = Color.red())
 
 def eligibility_check(user_id, server_id):
@@ -66,8 +66,8 @@ def get_intro(server_id):
     server_name = SERVER_NAMES[server_id]
     embed = Embed()
     embed.color = Color.random()
-    embed.title = f"Welcome to {server_name} WRAPPED 2024"
-    embed.description = f"Dive into your yearly statistics within the server with ***{server_name} WRAPPED 2024!***\n"
+    embed.title = f"Welcome to {server_name} WRAPPED 2025"
+    embed.description = f"Dive into your yearly statistics within the server with ***{server_name} WRAPPED 2025!***\n"
     embed.description += "Explore details about your activity, how you interacted with others, and more.\n\n"
     embed.description += "***Developed*** by **@.demetri**\n***Designed*** by **@jerseyjhonnie**\n***Powered*** by <@762465131736989696>\n\n"
     embed.description += "Hit the ▶️ to get started!"
@@ -78,7 +78,7 @@ def get_intro(server_id):
 def get_cooldown(time_left):
     embed = Embed()
     embed.color = Color.red()
-    embed.description = f"You can only request a 2024 Wrapped for a single server once every minute. Please try again in {round(time_left)} seconds."
+    embed.description = f"You can only request a 2025 Wrapped for a single server once every minute. Please try again in {round(time_left)} seconds."
     return embed
 
 
@@ -86,7 +86,7 @@ def get_wrapped_sent(server_id):
     server_name = SERVER_NAMES[server_id]
     embed = Embed()
     embed.color = Color.green()
-    embed.description = f"✅ Your {server_name} WRAPPED 2024 has been sent to your DMs!"
+    embed.description = f"✅ Your {server_name} WRAPPED 2025 has been sent to your DMs!"
     return embed
 
 
@@ -94,7 +94,7 @@ def get_wrapped_sent(server_id):
 def get_stat_image(server_id, text):
     server_name = SERVER_NAMES[server_id]
     embed = Embed()
-    embed.title = f"{server_name} WRAPPED 2024"
+    embed.title = f"{server_name} WRAPPED 2025"
     embed.color = Color.random()
     embed.description = text
     embed.set_footer(text=FOOTER_TEXT)
@@ -122,7 +122,7 @@ class ShareWrappedButton(Button):
         channel_id = SHARE_CHANNELS[self.server_id]
         channel = self.client.get_channel(channel_id)
         server_name = SERVER_NAMES[self.server_id]
-        embed = Embed(title = f"{server_name} WRAPPED 2024")
+        embed = Embed(title = f"{server_name} WRAPPED 2025")
         embed.color = Color.random()
         embed.description = f"{interaction.user.mention} shared their wrapped!"
 
@@ -205,7 +205,7 @@ class WrappedViewButton(Button):
             )
         else:
             print(
-                f"Delivering {SERVER_NAMES[self.server_id]} WRAPPED 2024 to {self.author_id}"
+                f"Delivering {SERVER_NAMES[self.server_id]} WRAPPED 2025 to {self.author_id}"
             )
             view = ServerWrappedView(self.author_id, self.server_id, 0, self.client)
             await interaction.user.send(embed=get_intro(self.server_id), view=view)
@@ -249,8 +249,8 @@ class Wrapped(commands.Cog):
         )  # Sort to guarantee order is preserved
         valid_wrapped = []
         embed = Embed()
-        embed.title = "DISCORD WRAPPED 2024"
-        embed_text = "Which of the following servers would you like to view your 2024 WRAPPED for?\n"
+        embed.title = "DISCORD WRAPPED 2025"
+        embed_text = "Which of the following servers would you like to view your 2025 WRAPPED for?\n"
 
         for server_id in server_ids:
             if eligibility_check(user_id, server_id):
@@ -261,7 +261,7 @@ class Wrapped(commands.Cog):
 
         embed.color = Color.gold()
         embed.description = embed_text
-        
+        print(f"Valid wrapped for user {user_id}: {valid_wrapped}")
         if valid_wrapped:
             await interaction.response.send_message(
                 embed=embed,
@@ -294,8 +294,8 @@ class Wrapped(commands.Cog):
         for user_id in eligible_users:
             
             user_obj = self.client.get_user(user_id)
-            embed = Embed(title = "DISCORD WRAPPED 2024", color = Color.random())
-            embed.description = "Merry Christmas Eve! 🌲 Your Discord Wrapped for 2024 is available in the following servers:\n\n"
+            embed = Embed(title = "DISCORD WRAPPED 2025", color = Color.random())
+            embed.description = "Merry Christmas Eve! 🌲 Your Discord Wrapped for 2025 is available in the following servers:\n\n"
             
             for server_id in eligibility_map[user_id]:
                 embed.description += f"**{SERVER_NAMES[server_id]}**\n"

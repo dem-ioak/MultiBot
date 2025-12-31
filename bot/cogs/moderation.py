@@ -210,6 +210,51 @@ class Moderation(commands.Cog):
         
         except Exception as e:
             print(e)
+    
+    @app_commands.command(name = "compile", description = "Output a file consisting of a  user_id -> username map")
+    async def compile_names(self, interaction : discord.Interaction):
+        if interaction.user.id != MY_USER_ID:
+            await interaction.response.send_message(
+                embed = FORBIDDEN_COMMAND,
+                ephemeral = True
+            )
+        else:
+            username_map = {}
+            bot_guilds = self.client.guilds
+            for guild in bot_guilds:
+                guild_dir = os.path.join(
+                    "C:/Users/demio/OneDrive/Desktop/Jupyter/Wrapped2025", str(guild.id)
+                )
+                os.makedirs(guild_dir, exist_ok=True)
+
+                if guild.icon:
+                    try:
+                        guild_image = guild.icon.url
+                        response = requests.get(guild_image)
+                        with open(os.path.join(guild_dir, "icon.png"), "wb") as f:
+                            f.write(response.content)
+                    except Exception:
+                        pass
+
+                for user in guild.members:
+                    if user.bot:
+                        continue
+
+                    user_dir = os.path.join(guild_dir, str(user.id))
+                    os.makedirs(user_dir, exist_ok=True)
+                    try:
+                        avatar_url = user.display_avatar.url
+                        response = requests.get(avatar_url)
+                        with open(os.path.join(user_dir, "avatar.png"), "wb") as f:
+                            f.write(response.content)
+                    except Exception:
+                        pass
+                    username_map[user.id] = user.name
+            
+            with open("user_map.json", "w") as f:
+                json.dump(username_map, f)
+            
+            await interaction.response.send_message("✅", ephemeral = True)
 
 
 async def setup(client):
