@@ -295,7 +295,7 @@ class Wrapped(commands.Cog):
             
             user_obj = self.client.get_user(user_id)
             embed = Embed(title = "DISCORD WRAPPED 2025", color = Color.random())
-            embed.description = "Merry Christmas Eve! 🌲 Your Discord Wrapped for 2025 is available in the following servers:\n\n"
+            embed.description = "Happy New Years Eve! 🍾 Your Discord Wrapped for 2025 is available in the following servers:\n\n"
             
             for server_id in eligibility_map[user_id]:
                 embed.description += f"**{SERVER_NAMES[server_id]}**\n"
