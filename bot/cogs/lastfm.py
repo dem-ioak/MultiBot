@@ -3,7 +3,7 @@ from discord import Embed, Color, app_commands
 from discord.ext import commands
 from discord.app_commands import Choice
 
-from util.classes.FMUser import FMUser, FMError, find_artist, find_track
+from util.classes.FMUser import FMUser, FMError, find_artist, find_track, artist_variants
 from util.constants import USERS
 from util.helper_functions import user_defaults
 from util.log_manager import get_logger
@@ -205,7 +205,16 @@ class Lastfm(commands.Cog):
         embed.set_author(name=target.name, icon_url=target.display_avatar.url)
         await interaction.followup.send(embed=embed)
 
-    async def send_comparison(self, interaction, title, get_plays):
+    async def get_spellings_note(self, artist):
+        """Describe which other spellings of an artist ("Giveon" for "GIVĒON") are being counted, if any.
+
+        Looking them up here also means the many lookups that follow all find them already known"""
+        variants = await self.run_blocking(artist_variants, artist)
+        if len(variants) == 1:
+            return None
+        return "Also counting plays under: " + ", ".join(variants[1:])
+
+    async def send_comparison(self, interaction, title, get_plays, note=None):
         """Rank every user in this server with a LastFM set by `get_plays(fm_user)`"""
 
         async def fetch(member, fm_username):
@@ -233,6 +242,8 @@ class Lastfm(commands.Cog):
             description=ranked_description(entries, "Plays") or "Nobody has listened to this",
             color=Color.red(),
         )
+        if note:
+            embed.set_footer(text=note)
         await interaction.followup.send(embed=embed)
 
     @lastfm.command(
@@ -349,8 +360,11 @@ class Lastfm(commands.Cog):
         if not artist:
             return
 
+        note = await self.get_spellings_note(artist)
         data = await self.run_blocking(fm_user.get_top_tracks_artist, artist)
         embed = Embed(color=Color.red(), title=f"Top Tracks by {artist}")
+        if note:
+            embed.set_footer(text=note)
         embed.description = (
             ranked_description(data) or "No listening records for this artist"
         )
@@ -409,6 +423,7 @@ class Lastfm(commands.Cog):
             interaction,
             f"Top Listeners for {artist}",
             lambda fm_user: fm_user.get_plays_artist(artist),
+            await self.get_spellings_note(artist),
         )
 
     @lastfm.command(
@@ -454,6 +469,7 @@ class Lastfm(commands.Cog):
             interaction,
             f"Top Listeners for {track} by {artist}",
             lambda fm_user: fm_user.get_plays_track(artist, track),
+            await self.get_spellings_note(artist),
         )
 
     @lastfm.command(
@@ -505,6 +521,7 @@ class Lastfm(commands.Cog):
             return
 
         album_name, artist_name, tracklist = album_info
+        note = await self.get_spellings_note(artist_name)
         counts = await asyncio.gather(
             *(
                 self.run_blocking(user_fm_obj.get_plays_track, artist_name, track_name)
@@ -515,6 +532,8 @@ class Lastfm(commands.Cog):
 
         embed = Embed()
         embed.title = f"Plays for songs on {album_name} by {artist_name}"
+        if note:
+            embed.set_footer(text=note)
         embed.description = ranked_description(playcounts)
         embed.color = Color.red()
         embed.set_author(name=target.name, icon_url=target.display_avatar.url)
