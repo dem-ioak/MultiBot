@@ -30,8 +30,8 @@ MAX_CONCURRENT_REQUESTS = 5
 
 PAGE_SIZE = 10
 PAGE_TIMEOUT = 300  # Seconds the arrows under a list keep working after they were last used
-TOP_LIST_SIZE = 100  # Entries fetched for topartists / topalbums / toptracks, 10 pages worth
-ARTIST_TRACKS_SIZE = 30  # Kept lower for toptracksartist, which has to scan the library to find them
+TOP_LIST_SIZE = 100  # How far topartists / topalbums / toptracks can be paged, 10 pages
+ARTIST_TRACKS_SIZE = 50  # How far toptracksartist can be paged, 5 pages
 
 
 def error_embed(description):
@@ -62,29 +62,43 @@ def ranked_description(entries, unit="plays"):
 
 
 class PageView(View):
-    """Arrows to flip through a list that is too long for one embed, `PAGE_SIZE` lines at a time"""
+    """Arrows to flip through a list that is too long for one embed, `PAGE_SIZE` lines at a time.
 
-    def __init__(self, embed, lines, invoker_id, note=None):
+    Only the first page is fetched to begin with, as most lists are never flipped through.
+    `load_more(count)` is called when a later page is asked for, and returns the first `count`
+    lines of the list along with whether that is the whole list."""
+
+    def __init__(self, embed, lines, invoker_id, note=None, load_more=None, complete=True, total=None):
         super().__init__(timeout=PAGE_TIMEOUT)
         self.embed = embed
         self.lines = lines
         self.invoker_id = invoker_id
         self.note = note
+        self.load_more = load_more
+        self.complete = complete or load_more is None
+        self.total = total  # How long the full list is, if that is known before it is loaded
         self.page = 0
-        self.page_count = max(1, ceil(len(lines) / PAGE_SIZE))
         self.message = None
+        self.loading = asyncio.Lock()
         self.show_page()
+
+    @property
+    def page_count(self):
+        """How many pages there are, None while that cannot be known without loading the rest"""
+        if self.complete:
+            return max(1, ceil(len(self.lines) / PAGE_SIZE))
+        return ceil(self.total / PAGE_SIZE) if self.total else None
 
     def show_page(self):
         start = self.page * PAGE_SIZE
         self.embed.description = "\n".join(self.lines[start:start + PAGE_SIZE])
         footer = [self.note] if self.note else []
-        if self.page_count > 1:
-            footer.append(f"Page {self.page + 1}/{self.page_count}")
-        if footer:
-            self.embed.set_footer(text=" • ".join(footer))
+        if self.page_count != 1:
+            footer.append(f"Page {self.page + 1}" + (f"/{self.page_count}" if self.page_count else ""))
+        # Set every time, as a list found to end on its first page should stop saying "Page 1"
+        self.embed.set_footer(text=" • ".join(footer) or None)
         self.previous_page.disabled = self.page == 0
-        self.next_page.disabled = self.page == self.page_count - 1
+        self.next_page.disabled = self.page_count is not None and self.page >= self.page_count - 1
 
     async def send(self, interaction):
         # A list that fits on one page has no use for arrows
@@ -103,9 +117,25 @@ class PageView(View):
         return False
 
     async def flip(self, interaction, change):
-        self.page = min(max(self.page + change, 0), self.page_count - 1)
-        self.show_page()
-        await interaction.response.edit_message(embed=self.embed, view=self)
+        # Answered straight away, fetching more of the list can take longer than Discord waits
+        await interaction.response.defer()
+        async with self.loading:
+            page = max(self.page + change, 0)
+            needed = (page + 1) * PAGE_SIZE
+            if len(self.lines) < needed and not self.complete:
+                try:
+                    self.lines, self.complete = await self.load_more(needed)
+                except FMError as error:
+                    # The page being shown is left as it was, so the arrow can simply be pressed again
+                    await interaction.followup.send(
+                        embed=error_embed(f"LastFM returned an error: {error}"), ephemeral=True
+                    )
+                    return
+
+            # Stay on the last page there is, if the list turned out shorter than expected
+            self.page = min(page, max(1, ceil(len(self.lines) / PAGE_SIZE)) - 1)
+            self.show_page()
+            await interaction.edit_original_response(embed=self.embed, view=self)
 
     @discord.ui.button(emoji="◀️", style=discord.ButtonStyle.gray)
     async def previous_page(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -263,22 +293,36 @@ class Lastfm(commands.Cog):
             return
 
         period = time.value if time else "overall"
-        entries = await self.run_blocking(fm_user.get_top, mode, period, TOP_LIST_SIZE)
+        loaded = 0
+        total = None
 
-        lines = []
-        for i, entry in enumerate(entries):
-            line = f"`{i + 1}` **{entry['name']}**"
-            if entry["artist"]:
-                line += f" by **{entry['artist']}**"
-            lines.append(line + f" ({entry['playcount']} plays)")
+        async def load(count):
+            """Get the first `count` lines of the list, and whether that is all there is to show"""
+            nonlocal loaded, total
+            # Fetched in growing steps, so paging through the whole list takes a handful of requests
+            loaded = min(TOP_LIST_SIZE, max(count, loaded * 2))
+            entries, total = await self.run_blocking(fm_user.get_top, mode, period, loaded)
+            lines = []
+            for i, entry in enumerate(entries):
+                line = f"`{i + 1}` **{entry['name']}**"
+                if entry["artist"]:
+                    line += f" by **{entry['artist']}**"
+                lines.append(line + f" ({entry['playcount']} plays)")
+            return lines, len(entries) < loaded or loaded >= TOP_LIST_SIZE
 
+        lines, complete = await load(PAGE_SIZE)
         embed = Embed(
             color=Color.red(),
             title=f"Top {mode.title()}s ({time.name if time else 'Overall'})",
         )
         embed.set_author(name=target.name, icon_url=target.display_avatar.url)
         await PageView(
-            embed, lines or ["No listening records for this timeframe"], interaction.user.id
+            embed,
+            lines or ["No listening records for this timeframe"],
+            interaction.user.id,
+            load_more=load,
+            complete=complete,
+            total=min(total, TOP_LIST_SIZE),
         ).send(interaction)
 
     async def get_spellings_note(self, artist):
@@ -437,14 +481,22 @@ class Lastfm(commands.Cog):
             return
 
         note = await self.get_spellings_note(artist)
-        data = await self.run_blocking(fm_user.get_top_tracks_artist, artist, ARTIST_TRACKS_SIZE)
+        async def load(count):
+            """Get the artist's top `count` tracks as lines, and whether that is all there is to show"""
+            count = min(count, ARTIST_TRACKS_SIZE)
+            data, complete = await self.run_blocking(fm_user.get_top_tracks_artist, artist, count)
+            return ranked_lines(data), complete or count >= ARTIST_TRACKS_SIZE
+
+        lines, complete = await load(PAGE_SIZE)
         embed = Embed(color=Color.red(), title=f"Top Tracks by {artist}")
         embed.set_author(name=target.name, icon_url=target.display_avatar.url)
         await PageView(
             embed,
-            ranked_lines(data) or ["No listening records for this artist"],
+            lines or ["No listening records for this artist"],
             interaction.user.id,
             note,
+            load_more=load,
+            complete=complete,
         ).send(interaction)
 
     @lastfm.command(name="set", description="Set your lastfm username")

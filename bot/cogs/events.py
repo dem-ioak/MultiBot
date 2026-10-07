@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from util.constants import *
 from util.enums import EventType
 from util.helper_functions import leveled_up, run_db, user_defaults
+from util.timeutil import unrecorded_end, is_stale
 from util.log_messages import *
 from util.constants import SERVERS, BOARDS, WATCHLIST, WATCHLIST_EMBED
 from util.helper_functions import board_view_description, generate_wl_page
@@ -114,8 +115,8 @@ class Events(commands.Cog):
 
         # Sessions that have been started but not ended, keyed by (guild_id, user_id).
         # These guarantee every JOIN / START_STREAM we write gets exactly one matching end event
-        self.open_vc = {}  # -> (channel_id, channel_name, EventType of the join)
-        self.open_streams = {}  # -> (channel_id, channel_name)
+        self.open_vc = {}  # -> (channel_id, channel_name, EventType of the join, time of the join)
+        self.open_streams = {}  # -> (channel_id, channel_name, time it started)
         self.voice_lock = asyncio.Lock()
         self.connected = False
 
@@ -233,8 +234,12 @@ class Events(commands.Cog):
         """Bring the stored VC events in line with who is actually in voice right now.
 
         Anything that happened while we were offline was never seen, so sessions that are open
-        in the data but over in reality are closed at the last moment we know we were online,
-        and anyone sitting in voice without an open session gets one started now."""
+        in the data but over in reality are closed, and anyone sitting in voice without an open
+        session gets one started now.
+
+        A session whose end was missed is ended at the last moment we know we were online, but
+        never later than the end of the day it started on. Without that, a join from months ago
+        that never got its leave would turn into a session lasting until today."""
         log = get_logger(__name__)
         async with self.voice_lock:
             now = datetime.utcnow()
@@ -269,9 +274,10 @@ class Events(commands.Cog):
                             channel.id,
                             channel.name,
                             EventType.JOIN_AFK if is_afk else EventType.JOIN_VC,
+                            now,
                         )
                         if member.voice and member.voice.self_stream:
-                            current_streams[key] = (channel.id, channel.name)
+                            current_streams[key] = (channel.id, channel.name, now)
 
             events = []
 
@@ -282,36 +288,47 @@ class Events(commands.Cog):
                     )
                 )
 
-            def still_there(key, event, current):
-                return key in current and current[key][0] == event["channel_id"]
+            def still_going(key, event, current):
+                # Being in the same channel only means the same session if it began recently enough.
+                # Somebody sat in a channel they also joined last month has simply come back to it
+                in_place = key in current and current[key][0] == event["channel_id"]
+                return in_place and not is_stale(event["timestamp"], last_alive)
+
+            def ended(event):
+                return unrecorded_end(event["timestamp"], last_alive)
 
             self.open_vc, self.open_streams = {}, {}
             for key, event in stored_streams.items():
-                in_same_vc = key in stored_vc and still_there(key, stored_vc[key], current_vc)
-                if in_same_vc and still_there(key, event, current_streams):
-                    self.open_streams[key] = current_streams[key]
+                in_same_vc = key in stored_vc and still_going(key, stored_vc[key], current_vc)
+                if in_same_vc and still_going(key, event, current_streams):
+                    self.open_streams[key] = (*current_streams[key][:2], event["timestamp"])
                 else:
+                    end = ended(event)
+                    if key in stored_vc and not in_same_vc:
+                        # A stream cannot outlast the session it was part of
+                        end = max(event["timestamp"], min(end, ended(stored_vc[key])))
                     add(
                         key,
-                        max(last_alive, event["timestamp"]),
+                        end,
                         EventType.END_STREAM,
                         event["channel_id"],
                         event.get("channel_name"),
                     )
 
             for key, event in stored_vc.items():
-                if still_there(key, event, current_vc):
+                if still_going(key, event, current_vc):
                     self.open_vc[key] = (
                         event["channel_id"],
                         current_vc[key][1],
                         EventType(event["event_type"]),
+                        event["timestamp"],
                     )
                 else:
                     was_afk = event["event_type"] == EventType.JOIN_AFK.value
                     add(
                         key,
                         # 1ms after the stream end above, so that sorting by time keeps their order
-                        max(last_alive, event["timestamp"]) + timedelta(milliseconds=1),
+                        ended(event) + timedelta(milliseconds=1),
                         EventType.LEAVE_AFK if was_afk else EventType.LEAVE_VC,
                         event["channel_id"],
                         event.get("channel_name"),
@@ -516,9 +533,11 @@ class Events(commands.Cog):
             events = []
             previous = (self.open_vc.get(key), self.open_streams.get(key))
 
-            def add(event_type, channel_id, channel_name, synthetic=False):
+            def add(event_type, channel_id, channel_name, synthetic=False, timestamp=None):
                 # Events of one update are spaced 1ms apart so that sorting by time keeps their order
-                timestamp = curr_time + timedelta(milliseconds=len(events))
+                timestamp = timestamp or curr_time + timedelta(milliseconds=len(events))
+                if events and timestamp <= events[-1].timestamp:
+                    timestamp = events[-1].timestamp + timedelta(milliseconds=1)
                 events.append(
                     DataClasses.VCEvent(
                         key[0], key[1], timestamp, event_type, channel_id, channel_name, synthetic
@@ -526,20 +545,33 @@ class Events(commands.Cog):
                 )
                 log.info(event_type.name)
 
+            # The open session is not the one they are leaving now, so its own leave was never seen.
+            # When that happened is unknown, so it is ended no later than the end of the day it began
+            missed_end = None
+            if moved and key in self.open_vc and (not old or old.id != self.open_vc[key][0]):
+                missed_end = unrecorded_end(self.open_vc[key][3], curr_time)
+
             # A stream ends when it is stopped, and also whenever the user changes channel
             if key in self.open_streams and (moved or not streaming):
-                add(EventType.END_STREAM, *self.open_streams.pop(key))
+                channel_id, channel_name, started = self.open_streams.pop(key)
+                if missed_end:
+                    add(EventType.END_STREAM, channel_id, channel_name, True, max(started, missed_end))
+                else:
+                    add(EventType.END_STREAM, channel_id, channel_name)
 
             if moved:
                 if key in self.open_vc:
-                    channel_id, channel_name, join_type = self.open_vc.pop(key)
+                    channel_id, channel_name, join_type, joined = self.open_vc.pop(key)
                     # The leave always mirrors its join, even if the AFK channel was changed since
                     leave_type = (
                         EventType.LEAVE_AFK
                         if join_type == EventType.JOIN_AFK
                         else EventType.LEAVE_VC
                     )
-                    add(leave_type, channel_id, channel_name, not old or old.id != channel_id)
+                    if missed_end:
+                        add(leave_type, channel_id, channel_name, True, missed_end + timedelta(milliseconds=1))
+                    else:
+                        add(leave_type, channel_id, channel_name)
                 elif old:
                     log.warning("Left a VC they were never seen joining, no event written")
 
@@ -547,11 +579,11 @@ class Events(commands.Cog):
                 join_type = EventType.JOIN_AFK if new.id == afk_corner else EventType.JOIN_VC
                 # If they did not just move here, we missed the join and are only now catching up
                 add(join_type, new.id, new.name, not moved)
-                self.open_vc[key] = (new.id, new.name, join_type)
+                self.open_vc[key] = (new.id, new.name, join_type, curr_time)
 
             if streaming and key not in self.open_streams:
                 add(EventType.START_STREAM, new.id, new.name)
-                self.open_streams[key] = (new.id, new.name)
+                self.open_streams[key] = (new.id, new.name, curr_time)
 
             if events:
                 try:

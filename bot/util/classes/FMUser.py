@@ -1,5 +1,6 @@
 import os
 import requests
+import time
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
@@ -8,6 +9,8 @@ FM_URL = "https://ws.audioscrobbler.com/2.0/"
 FM_TIMEOUT = 10
 FM_NOT_FOUND = 6  # LastFM error code for "the user/artist/track you asked for does not exist"
 FM_TRANSIENT = (8, 11, 16)  # LastFM error codes that are worth a retry
+FM_RETRIES = 2
+FM_RETRY_DELAY = 0.5  # Seconds, these errors tend to come in short bursts
 FM_PAGE_SIZE = 500  # Pages of 1000 are accepted, but fail on LastFM's end about a quarter of the time
 FM_PAGE_BATCH = 4  # Library pages fetched at once when scanning a user's top tracks
 
@@ -30,7 +33,7 @@ class FMError(Exception):
         self.code = code
 
 
-def fm_request(method, retry=True, **params):
+def fm_request(method, retries=FM_RETRIES, **params):
     """Make a call to the LastFM API, returning the parsed JSON response"""
     query = dict(params, method=method, api_key=os.getenv("LAST_FM_KEY"), format="json")
     try:
@@ -39,8 +42,9 @@ def fm_request(method, retry=True, **params):
         raise FMError("Could not reach LastFM") from e
 
     if "error" in data:
-        if retry and data["error"] in FM_TRANSIENT:
-            return fm_request(method, retry=False, **params)
+        if retries and data["error"] in FM_TRANSIENT:
+            time.sleep(FM_RETRY_DELAY)
+            return fm_request(method, retries=retries - 1, **params)
         raise FMError(data.get("message", "Unknown LastFM error"), data["error"])
 
     return data
@@ -109,6 +113,8 @@ def artist_variants(artist):
 class FMUser:
     def __init__(self, username):
         self.username = username
+        # Library pages already read. Asking for more of an artist's tracks carries on from these
+        self._track_pages = {}
 
     def is_valid(self):
         """Determine whether the provided LastFM username is an active account"""
@@ -176,7 +182,9 @@ class FMUser:
         }
 
     def get_top(self, mode, period="overall", limit=10):
-        """Get this user's top `mode` ("artist", "album" or "track") over the provided timeframe"""
+        """Get this user's top `mode` ("artist", "album" or "track") over the provided timeframe.
+
+        Returns the entries, along with how many there are in total to be asked for"""
         data = fm_request(
             f"user.gettop{mode}s",
             user=self.username,
@@ -200,15 +208,21 @@ class FMUser:
                 }
 
         entries = sorted(merged.values(), key=lambda entry: entry["playcount"], reverse=True)
-        return entries[:limit]
+        total = int(data[f"top{mode}s"].get("@attr", {}).get("total", len(entries)))
+        return entries[:limit], total
 
     def _top_tracks_page(self, page):
-        return fm_request(
-            "user.gettoptracks", user=self.username, limit=FM_PAGE_SIZE, page=page
-        )["toptracks"]
+        if page not in self._track_pages:
+            self._track_pages[page] = fm_request(
+                "user.gettoptracks", user=self.username, limit=FM_PAGE_SIZE, page=page
+            )["toptracks"]
+        return self._track_pages[page]
 
     def get_top_tracks_artist(self, artist, limit=10):
-        """Get this user's top tracks from the provided artist as (track, playcount) pairs"""
+        """Get this user's top tracks from the provided artist as (track, playcount) pairs.
+
+        Returns the tracks, along with whether that is all of them. The library is only read as
+        far as it takes to be sure of the top `limit`, so a later call for more picks up from there"""
         variants = artist_variants(artist)
         names = set(variant.lower() for variant in variants)
 
@@ -216,14 +230,16 @@ class FMUser:
         # rather than reading the whole library when the artist has under `limit` tracks
         remaining = self.get_plays_artist(artist)
         if not remaining:
-            return []
+            return [], True
+
+        scanned_everything = False
 
         # A track played under two spellings of the artist is two rows in the library, added together here
         totals = {}  # normalized track name -> [name, playcount]
 
         def collect(data):
             """Add this page's matches, returning whether the scan is finished"""
-            nonlocal remaining
+            nonlocal remaining, scanned_everything
             tracks = as_list(data.get("track"))
             for track in tracks:
                 if track["artist"]["name"].lower() in names:
@@ -232,6 +248,7 @@ class FMUser:
                     remaining -= plays
 
             if remaining <= 0 or not tracks:
+                scanned_everything = True
                 return True
             if len(totals) < limit:
                 return False
@@ -252,7 +269,10 @@ class FMUser:
                     pages = range(start, min(start + FM_PAGE_BATCH, total_pages + 1))
                     if any(collect(data) for data in pool.map(self._top_tracks_page, pages)):
                         break
+                else:
+                    scanned_everything = True
 
+        complete = scanned_everything and len(totals) <= limit
         result = sorted(totals.values(), key=lambda track: track[1], reverse=True)[:limit]
         if len(variants) > 1 and remaining > 0:
             # The scan stopped once the top tracks were settled, but one of them may still have a few
@@ -262,4 +282,4 @@ class FMUser:
                 result = [[name, max(plays, count)] for (name, plays), count in zip(result, exact)]
             result.sort(key=lambda track: track[1], reverse=True)
 
-        return [(name, plays) for name, plays in result]
+        return [(name, plays) for name, plays in result], complete
