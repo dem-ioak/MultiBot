@@ -1,38 +1,76 @@
 import os
 import requests
+from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 
-LAST_FM_KEY = os.getenv("LAST_FM_KEY")
-FM_BASE = "https://ws.audioscrobbler.com/2.0/?method="
-FM_PARAMS = "&user={}&api_key={}&format=json"
-FM_TOP_PARAMS = "&user={}&api_key={}&format=json&period={}"
+FM_URL = "https://ws.audioscrobbler.com/2.0/"
+FM_TIMEOUT = 10
+FM_NOT_FOUND = 6  # LastFM error code for "the user/artist/track you asked for does not exist"
+FM_TRANSIENT = (8, 11, 16)  # LastFM error codes that are worth a retry
+FM_PAGE_SIZE = 500  # Pages of 1000 are accepted, but fail on LastFM's end about a quarter of the time
+FM_PAGE_BATCH = 4  # Library pages fetched at once when scanning a user's top tracks
 
-def convert_title(title):
-    return title.replace(" ", "+").replace("&", "%26")
+# Shared so every call reuses the same connections instead of opening a new one
+session = requests.Session()
 
-# Not in `helper_functions` to avoid circular import issue
-def json_extract(obj, key, val):
-    """Recursively fetch values from nested JSON."""
-    arr = []
 
-    def extract(obj, arr, key, val):
-        """Recursively search for values of key in JSON tree."""
-        if isinstance(obj, dict):
-            for k, v in obj.items():
-                if isinstance(v, (dict, list)):
-                    extract(v, arr, key, val)
-                elif k == key:
-                    try:
-                        if obj["artist"]["name"].lower() == val:              
-                            arr.append((obj["name"], obj["playcount"]))
-                    except KeyError:
-                        continue
-        elif isinstance(obj, list):
-            for item in obj:
-                extract(item, arr, key, val)
-        return arr
+class FMError(Exception):
+    """Raised when LastFM cannot be reached, or responds with an error"""
 
-    values = extract(obj, arr, key, val)
-    return values
+    def __init__(self, message, code=None):
+        super().__init__(message)
+        self.code = code
+
+
+def fm_request(method, retry=True, **params):
+    """Make a call to the LastFM API, returning the parsed JSON response"""
+    query = dict(params, method=method, api_key=os.getenv("LAST_FM_KEY"), format="json")
+    try:
+        data = session.get(FM_URL, params=query, timeout=FM_TIMEOUT).json()
+    except (requests.RequestException, ValueError) as e:
+        raise FMError("Could not reach LastFM") from e
+
+    if "error" in data:
+        if retry and data["error"] in FM_TRANSIENT:
+            return fm_request(method, retry=False, **params)
+        raise FMError(data.get("message", "Unknown LastFM error"), data["error"])
+
+    return data
+
+
+def as_list(value):
+    """LastFM returns a bare object instead of a list when there is only one result"""
+    if not value:
+        return []
+    return value if isinstance(value, list) else [value]
+
+
+def _first_match(data, mode):
+    matches = data.get("results", {}).get(f"{mode}matches")
+    if not isinstance(matches, dict):
+        return None
+
+    matches = as_list(matches.get(mode))
+    return matches[0] if matches else None
+
+
+@lru_cache(maxsize=512)
+def find_track(track, artist=None):
+    """Search LastFM for a track, returning its proper (track, artist) names or None"""
+    params = {"track": track, "limit": 1}
+    if artist:
+        params["artist"] = artist
+
+    match = _first_match(fm_request("track.search", **params), "track")
+    return (match["name"], match["artist"]) if match else None
+
+
+@lru_cache(maxsize=512)
+def find_artist(artist):
+    """Search LastFM for an artist, returning their proper name or None"""
+    match = _first_match(fm_request("artist.search", artist=artist, limit=1), "artist")
+    return match["name"] if match else None
+
 
 class FMUser:
     def __init__(self, username):
@@ -41,139 +79,114 @@ class FMUser:
     def is_valid(self):
         """Determine whether the provided LastFM username is an active account"""
         try:
-            method = "user.getinfo"
-            URL = FM_BASE + method + FM_PARAMS.format(self.username, LAST_FM_KEY)
-            source = requests.get(URL).json()
-            data = source["user"]
+            fm_request("user.getinfo", user=self.username)
             return True
-        except KeyError:
-            return False
-    
-            
+        except FMError as e:
+            if e.code == FM_NOT_FOUND:
+                return False
+            raise
+
     def get_plays_track(self, artist, track):
         """Get this user's playcount for provided track"""
         try:
-            artist, track = convert_title(artist), convert_title(track)
-            URL = FM_BASE + f"track.getInfo&api_key={LAST_FM_KEY}&artist={artist}&track={track}&username={self.username}&format=json"
-            source = requests.get(URL).json()
-            return source["track"]["userplaycount"]
-        except Exception as e:
-            print(e)
-            return 0
-        
+            data = fm_request(
+                "track.getInfo",
+                artist=artist,
+                track=track,
+                username=self.username,
+                autocorrect=1,
+            )
+        except FMError as e:
+            if e.code == FM_NOT_FOUND:
+                return 0
+            raise
 
-    def get_plays_artist(self, artist):
+        return int(data["track"].get("userplaycount", 0))
+
+    def get_plays_artist(self, artist, autocorrect=1):
         """Get this user's playcount for provided artist"""
-        artist = convert_title(artist)
-        URL = FM_BASE + f"artist.getinfo&artist={artist}&api_key={LAST_FM_KEY}&format=json&username={self.username}"
-        source = requests.get(URL).json()
-        return source["artist"]["stats"]["userplaycount"]
-        
-    def get_plays_album(self, album):
-        """Get this user's playcount for provided album"""
-        pass
+        try:
+            data = fm_request(
+                "artist.getinfo",
+                artist=artist,
+                username=self.username,
+                autocorrect=autocorrect,
+            )
+        except FMError as e:
+            if e.code == FM_NOT_FOUND:
+                return 0
+            raise
+
+        return int(data["artist"].get("stats", {}).get("userplaycount", 0))
 
     def get_np(self):
-        """Get the track this user is currently playing"""
-        method = "user.getrecenttracks"
-        URL = FM_BASE + method + FM_PARAMS.format(self.username, LAST_FM_KEY)
-        source = requests.get(URL).json()
-        data = source["recenttracks"]["track"][0]
+        """Get the track this user is currently playing (or last played), None if they have no scrobbles"""
+        data = fm_request("user.getrecenttracks", user=self.username, limit=1)
+        tracks = as_list(data["recenttracks"].get("track"))
+        if not tracks:
+            return None
 
-        name = data["name"]
-        artist = data["artist"]["#text"]
-        img = data["image"][-1]["#text"]
-        album = data['album']['#text']
+        track = tracks[0]
+        images = track.get("image") or [{}]
         return {
-            "song_name" : name,
-            "artist" : artist,
-            "image" : img,
-            "album" : album
+            "song_name": track["name"],
+            "artist": track["artist"]["#text"],
+            "image": images[-1].get("#text", ""),
+            "album": track["album"]["#text"],
         }
 
-    def _get_top_util(self, mode, time = None):
-        """Helper to handle all forms of get_top_x"""
-        method = f"user.gettop{mode}s"
-        URL = FM_BASE + method + FM_TOP_PARAMS.format(self.username, LAST_FM_KEY, time)
-        source = requests.get(URL).json()
-        info = source[f"top{mode}s"][mode]
-        count = 1
-        dct = {}
-        is_artists = mode == "artist"
-        for entry in info[:10]:
-            a = entry["name"]
-            b = None if is_artists else entry["artist"]["name"]
-            playcount = entry["playcount"]
-            key = str(count)
-            dct[key] = {
-                mode : a,
-                "playcount" : playcount
+    def get_top(self, mode, period="overall", limit=10):
+        """Get this user's top `mode` ("artist", "album" or "track") over the provided timeframe"""
+        data = fm_request(
+            f"user.gettop{mode}s", user=self.username, period=period, limit=limit
+        )
+        entries = as_list(data[f"top{mode}s"].get(mode))
+        return [
+            {
+                "name": entry["name"],
+                "artist": None if mode == "artist" else entry["artist"]["name"],
+                "playcount": int(entry["playcount"]),
             }
-            if not is_artists:
-                dct[key]["artist"] = b
-            count += 1
+            for entry in entries
+        ]
 
-        return dct
-    
-    def _construct_string(self, data, is_artists = False):
-        """Construct description strings for embed"""
-        result = ""
-        n = len(data.keys())
-        for i in range(n):
-            key = str(i + 1)
-            if is_artists:
-                a, b = data[key].values()
-                result += f"`{key}` **{a}** ({b} plays)\n"
-            else:
-                a, b, c = data[key].values()
-                result += f"`{key}` **{a}** by **{c}** ({b} plays)\n"
-                
-        return result
-        
+    def _top_tracks_page(self, page):
+        return fm_request(
+            "user.gettoptracks", user=self.username, limit=FM_PAGE_SIZE, page=page
+        )["toptracks"]
 
-    def get_top_artists(self, time = None):
-        """Get this user's top artists over the provided timeframe"""
-        data = self._get_top_util("artist", time)
-        return self._construct_string(data, True)
+    def get_top_tracks_artist(self, artist, limit=10):
+        """Get this user's top tracks from the provided artist as (track, playcount) pairs"""
+        # Knowing the total lets us stop scanning once every play is accounted for,
+        # rather than reading the whole library when the artist has under `limit` tracks
+        remaining = self.get_plays_artist(artist, autocorrect=0)
+        if not remaining:
+            return []
 
-    def get_top_albums(self, time = None):
-        """Get this user's top albums over the provided timeframe"""
-        data = self._get_top_util("album", time)
-        return self._construct_string(data)
-
-    def get_top_tracks(self, time = None):
-        """Get this user's top trackks over the provided timeframe"""
-        data = self._get_top_util("track", time)
-        return self._construct_string(data)
-
-    def get_top_tracks_artist(self, artist):
-        """Get this user's top tracks from the provided artist"""
-        method = "user.gettoptracks"
-        URL = FM_BASE + method + FM_PARAMS.format(self.username, LAST_FM_KEY) + "&limit=200&page="
         artist = artist.lower()
         result = []
-        curr_page = 1
-        capacity = False
 
-        while not capacity:
-            resp = requests.get(URL + str(curr_page))
-            if resp.status_code != 200:
-                break
+        def collect(data):
+            """Add this page's matches, returning whether the scan is finished"""
+            nonlocal remaining
+            for track in as_list(data.get("track")):
+                if track["artist"]["name"].lower() == artist:
+                    result.append((track["name"], int(track["playcount"])))
+                    remaining -= result[-1][1]
+                    # Tracks come back sorted by playcount, so the first `limit` are the top ones
+                    if len(result) >= limit or remaining <= 0:
+                        return True
+            return False
 
-            data = resp.json()
-            if not data["toptracks"]["track"]:
-                break
-            
-            for j in json_extract(data, "name", artist):
-                result.append(j)
-                if len(result) == 10:
-                    capacity = True
+        first = self._top_tracks_page(1)
+        if collect(first):
+            return result
+
+        total_pages = int(first.get("@attr", {}).get("totalPages", 1))
+        with ThreadPoolExecutor(FM_PAGE_BATCH) as pool:
+            for start in range(2, total_pages + 1, FM_PAGE_BATCH):
+                pages = range(start, min(start + FM_PAGE_BATCH, total_pages + 1))
+                if any(collect(data) for data in pool.map(self._top_tracks_page, pages)):
                     break
-            curr_page += 1
 
         return result
-    
-
-    def get_top_tracks_album(self, album):
-        """Get this user's top tracks from the provided album"""
-        pass

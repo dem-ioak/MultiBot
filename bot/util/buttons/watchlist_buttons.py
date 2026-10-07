@@ -3,54 +3,99 @@ from discord import SelectOption, Embed, Color, ButtonStyle
 from discord.ext import commands
 from discord.ui import Button, View, TextInput, Modal, Select
 from math import ceil
+from uuid import uuid4
 
-from util.constants import WATCHLIST, WATCHLIST_EMBED
+from util.constants import WATCHLIST, WATCHLIST_EMBED, WL_EMOJIS
 from util.dataclasses import WatchListEntry
-from util.helper_functions import generate_wl_page
+from util.helper_functions import generate_wl_page, sort_wl_entries, clamp_wl_page
 
 
 SUCCESSFUL_ADD = Embed(description="Successfully added the entry to the watchlist.", color = Color.green())
-FAILED_ADD = Embed(description="Failed to add that entry. Please make sure the curent season is less than the total, and all season fields are numbers", color = Color.red())
-SUCCESSFUL_EDIT = Embed(description="Successfully edited/deleted this entry of the watchlist.", color = Color.yellow())
+FAILED_ADD = Embed(description="Failed to add that entry. Please make sure the curent season is between 1 and the total, and all season fields are numbers", color = Color.red())
+DUPLICATE_ADD = Embed(description="Failed to add that entry, as it is already on the watchlist.", color = Color.red())
 OUT_OF_BOUNDS = Embed(description="❌ Cannot flip to the requested page. This is because the page is out of bounds.")
 DIRECTIONS = {"left" : "◀", "right" : "▶"}
 
+# Discord allows at most 25 options in a dropdown, so longer watchlists are picked from a page at a time
+OPTION_LIMIT = 25
+STATUS_NAMES = [-1, "Not started", "Watching", "Finished"]
+ENTRY_GONE = "That entry is no longer on the watchlist."
+ENTRY_CHANGED = "Somebody else changed that entry at the same moment. Here is how it looks now."
 
 
-def upgrade_wl_entry(entries, ind):
-    if not is_upgradeable(entries, ind): 
-        return entries
-    name, status, curr, total = entries[ind].values()
+def load_watchlist(guild_id):
+    """Get this server's (entries, current page)"""
+    wl = WATCHLIST.find_one({"_id" : guild_id}) or {}
+    entries = wl.get("entries", [])
+
+    # Entries are told apart by an id, which the ones added before ids existed need giving
+    if any("id" not in entry for entry in entries):
+        for entry in entries:
+            entry.setdefault("id", uuid4().hex)
+        WATCHLIST.update_one({"_id" : guild_id}, {"$set" : {"entries" : entries}})
+
+    return entries, wl.get("current_page", 1)
+
+def find_entry(entries, entry_id):
+    return next((entry for entry in entries if entry["id"] == entry_id), None)
+
+def describe_entry(entry):
+    if entry["curr"] == None:
+        return f"🎥 **{entry['name']}** {WL_EMOJIS[entry['status']]}"
+    return f"📺 **{entry['name']}** (Season {entry['curr']}/{entry['total']}) {WL_EMOJIS[entry['status']]}"
+
+def upgraded(entry):
+    """Get the (status, season) an entry moves on to, None if it is already finished"""
+    status, curr, total = entry["status"], entry["curr"], entry["total"]
     if curr == None: # if it's a movie
-        entries[ind]["status"] = 3
-    else:
-        if status == 2: 
-            if curr < total: # if theres more seasons
-                entries[ind]["status"] = 1
-                entries[ind]["curr"] += 1
-            else:
-                entries[ind]["status"] += 1
-        else:
-            entries[ind]["status"] +=1
-    entries.sort(key=lambda x: (x["status"], x["name"]))
-    return entries
+        return (3, None) if status != 3 else None
+    if status == 1:
+        return (2, curr)
+    if status == 2:
+        return (1, curr + 1) if curr < total else (3, curr) # if theres more seasons
+    return None
 
-def delete_wl_entry(entries, ind):
-    if ind < 0 or ind >= len(entries):
-        return (False, entries)
-    entries.remove(entries[ind])
-    entries.sort(key=lambda x: (x["status"], x["name"]))
-    return entries
-
-def is_upgradeable(entries, ind):
-    name, status, curr, total = entries[ind].values()
+def downgraded(entry):
+    """Get the (status, season) an entry moves back to, undoing an upgrade. None if it is at the very start"""
+    status, curr = entry["status"], entry["curr"]
     if curr == None:
-        return status != 3
-    else:
-        return not (curr == total and status == 3)
+        return (1, None) if status != 1 else None
+    if status == 3:
+        return (2, curr)
+    if status == 2:
+        return (1, curr)
+    return (2, curr - 1) if curr > 1 else None
 
-def update_watchlist(guild_id, entries):
-    WATCHLIST.update_one({"_id" : guild_id}, {"$set" : {"entries" : entries}})
+def move_entry(guild_id, entry, new):
+    """Move an entry to a new (status, season). Only goes through if nobody changed the entry since it was read"""
+    status, curr = new
+    result = WATCHLIST.update_one(
+        {"_id" : guild_id, "entries" : {"$elemMatch" : {"id" : entry["id"], "status" : entry["status"], "curr" : entry["curr"]}}},
+        {"$set" : {"entries.$.status" : status, "entries.$.curr" : curr}})
+    return result.modified_count == 1
+
+async def refresh_watchlist(message, guild_id):
+    """Redraw the watchlist message from what is stored, so it can never drift from it"""
+    entries, current_page = load_watchlist(guild_id)
+    page = clamp_wl_page(current_page, entries)
+    if page != current_page:
+        WATCHLIST.update_one({"_id" : guild_id}, {"$set" : {"current_page" : page}})
+    await message.edit(embed=generate_wl_page(page, entries))
+
+async def add_entry(interaction, message, entry):
+    guild_id = interaction.guild.id
+    entries, current_page = load_watchlist(guild_id)
+    if any(existing["name"].lower() == entry.name.lower() for existing in entries):
+        await interaction.response.edit_message(embed=DUPLICATE_ADD, view=None)
+        return
+
+    WATCHLIST.update_one(
+        {"_id" : guild_id},
+        {"$push" : {"entries" : entry.__dict__}, "$setOnInsert" : {"current_page" : 1}},
+        upsert=True)
+    await refresh_watchlist(message, guild_id)
+    await interaction.response.edit_message(embed=SUCCESSFUL_ADD, view=None)
+
 
 # WatchList
 class WatchListView(View): # Creates the Message with control buttons and current watch list
@@ -59,7 +104,7 @@ class WatchListView(View): # Creates the Message with control buttons and curren
         self.client = client
         self.message = message
         self.init_view()
-    
+
     def init_view(self):
         client = self.client
         self.add_item(AddEntryButton(client))
@@ -74,10 +119,10 @@ class AddEntryButton(Button):
         self.client = client
     async def callback(self, interaction):
         view = View()
-        view.message = self.view.message
+        view.message = interaction.message
         view.add_item(AddEntryDropDown(self.client))
         await interaction.response.send_message(
-            view=view, 
+            view=view,
             ephemeral=True)
 
 class AddEntryDropDown(Select):
@@ -88,7 +133,7 @@ class AddEntryDropDown(Select):
             SelectOption(label="📺 TV Show"),
             SelectOption(label="🎥 Movie")
         ]
-    
+
     async def callback(self, interaction):
         choice = self.values[0]
         if choice == "📺 TV Show":
@@ -96,78 +141,131 @@ class AddEntryDropDown(Select):
         else:
             await interaction.response.send_modal(MovieModal(self.client, self.view.message))
 
+
+# Editing entries. One private prompt: pick an entry, then upgrade it, undo an upgrade, or delete it
 class ModifyEntryButton(Button):
     def __init__(self, client):
         super().__init__(label="📂", style = discord.ButtonStyle.green, custom_id="ModifyEntry")
         self.client = client
     async def callback(self, interaction):
-        view = View()
-        view.message = self.view.message
-        dropdown = Select(min_values=1, max_values=1, placeholder="How would you like to edit existing entries?")
-        dropdown.options = [
-            SelectOption(label="📈 Upgrade"),
-            SelectOption(label="❌ Delete")
+        await show_entry_picker(interaction, interaction.message, new_message=True)
+
+async def show_entry_picker(interaction, message, page=0, note=None, new_message=False):
+    entries, current_page = load_watchlist(interaction.guild.id)
+    description = "📂 Select the entry you would like to edit." if entries else "The watchlist is empty."
+    view = EntryPickerView(message, entries, page)
+    if view.page_count > 1:
+        start = view.page * OPTION_LIMIT
+        description += f"\nShowing entries {start + 1}-{min(start + OPTION_LIMIT, len(entries))} of {len(entries)}, use the arrows for more."
+    if note:
+        description = f"{note}\n\n{description}"
+
+    embed = Embed(description=description)
+    if new_message:
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+    else:
+        await interaction.response.edit_message(embed=embed, view=view)
+
+class EntrySelect(Select):
+    def __init__(self, entries):
+        options = [
+            SelectOption(
+                label="{} {}".format("🎥" if entry["curr"] == None else "📺", entry["name"]),
+                value=entry["id"],
+                description=STATUS_NAMES[entry["status"]] if entry["curr"] == None
+                    else f"Season {entry['curr']}/{entry['total']} - {STATUS_NAMES[entry['status']]}")
+            for entry in entries
         ]
-        
-        async def dropdown_callback(interaction):
-            choice = dropdown.values[0]
-            if choice == "📈 Upgrade": mode = "upgrade"
-            else: mode = "delete"
-            view = View()
-            view.message = self.view.message
-            view.add_item(
-                ModifyEntryDropdown(self.client, interaction.guild, mode)
-            )
-            await interaction.response.send_message(view=view, ephemeral=True)
-        
-        dropdown.callback=dropdown_callback
-        view.add_item(dropdown)
-        await interaction.response.send_message(view=view, ephemeral=True)
+        super().__init__(placeholder="Select an entry", min_values=1, max_values=1, options=options)
 
-class ModifyEntryDropdown(Select):
-
-    def __init__(self, client, guild, mode):
-        super().__init__(placeholder=f"Select an entry to {mode}", min_values=1, max_values=1)
-        self.client = client
-        self.guild_id = guild.id
-        self.options = []
-        self.mode = mode
-        self.wl = WATCHLIST.find_one({"_id" : guild.id})
-        self.entries = self.wl["entries"]
-        for x, i in enumerate(self.entries):
-            if is_upgradeable(self.entries, x):
-                self.options.append(
-                    (SelectOption(
-                        label="{} {} {}".format(x, "🎥" if i["curr"] == None else "📺", i["name"]))))
-        if len(self.options) == 0:
-            self.options.append(SelectOption(label="There are no modifiable entries!"))
-        
     async def callback(self, interaction):
-        guild_id = interaction.guild.id
-        try:
-            choice = ""
-            for i in self.values[0]:
-                try:
-                    x = int(i)
-                    choice += i
-                except ValueError: break
-                
-            choice = int(choice)
-            wl = WATCHLIST.find_one({"_id" : guild_id})
-        
-            entries = wl["entries"]
-            current_page = wl["current_page"]
-            if self.mode == "upgrade":
-                entries = upgrade_wl_entry(entries, choice)
-            else:
-                entries = delete_wl_entry(entries, choice)
+        await show_entry(interaction, self.view.message, self.values[0])
 
-            embed = generate_wl_page(current_page, entries)
-            update_watchlist(guild_id, entries)
-            await self.view.message.edit(embed=embed)
-            await interaction.response.edit_message(embed=SUCCESSFUL_EDIT, view=None)
-        except ValueError:
-            await interaction.response.defer()
+class EntryPickerView(View):
+    def __init__(self, message, entries, page):
+        super().__init__()
+        self.message = message
+        entries = sort_wl_entries(entries)
+        self.page_count = max(1, ceil(len(entries) / OPTION_LIMIT))
+        self.page = min(max(page, 0), self.page_count - 1)
+        start = self.page * OPTION_LIMIT
+        if entries:
+            self.add_item(EntrySelect(entries[start:start + OPTION_LIMIT]))
+
+        # Only needed once there are more entries than fit in one dropdown
+        if self.page_count == 1:
+            self.remove_item(self.previous_page)
+            self.remove_item(self.next_page)
+        else:
+            self.previous_page.disabled = self.page == 0
+            self.next_page.disabled = self.page == self.page_count - 1
+
+    @discord.ui.button(emoji="◀", style=ButtonStyle.gray, row=1)
+    async def previous_page(self, interaction, button):
+        await show_entry_picker(interaction, self.message, self.page - 1)
+
+    @discord.ui.button(emoji="▶", style=ButtonStyle.gray, row=1)
+    async def next_page(self, interaction, button):
+        await show_entry_picker(interaction, self.message, self.page + 1)
+
+async def show_entry(interaction, message, entry_id, note=None):
+    entries, current_page = load_watchlist(interaction.guild.id)
+    entry = find_entry(entries, entry_id)
+    if entry is None:
+        await show_entry_picker(interaction, message, note=ENTRY_GONE)
+        return
+
+    description = describe_entry(entry)
+    if note:
+        description = f"{note}\n\n{description}"
+    await interaction.response.edit_message(embed=Embed(description=description), view=EntryView(message, entry))
+
+class EntryView(View):
+    """The actions available for one entry of the watchlist"""
+    def __init__(self, message, entry):
+        super().__init__()
+        self.message = message
+        self.entry_id = entry["id"]
+        self.upgrade.disabled = upgraded(entry) is None
+        self.undo.disabled = downgraded(entry) is None
+
+    async def move(self, interaction, get_new):
+        guild_id = interaction.guild.id
+        entry = find_entry(load_watchlist(guild_id)[0], self.entry_id)
+        new = get_new(entry) if entry else None
+        note = None
+        if new is not None:
+            if move_entry(guild_id, entry, new):
+                await refresh_watchlist(self.message, guild_id)
+            else:
+                note = ENTRY_CHANGED
+
+        await show_entry(interaction, self.message, self.entry_id, note)
+
+    @discord.ui.button(label="Upgrade", emoji="📈", style=ButtonStyle.green)
+    async def upgrade(self, interaction, button):
+        await self.move(interaction, upgraded)
+
+    @discord.ui.button(label="Undo", emoji="↩️", style=ButtonStyle.gray)
+    async def undo(self, interaction, button):
+        await self.move(interaction, downgraded)
+
+    @discord.ui.button(label="Delete", emoji="❌", style=ButtonStyle.red)
+    async def delete(self, interaction, button):
+        guild_id = interaction.guild.id
+        entry = find_entry(load_watchlist(guild_id)[0], self.entry_id)
+        if entry is None:
+            await show_entry_picker(interaction, self.message, note=ENTRY_GONE)
+            return
+
+        WATCHLIST.update_one({"_id" : guild_id}, {"$pull" : {"entries" : {"id" : self.entry_id}}})
+        await refresh_watchlist(self.message, guild_id)
+        await show_entry_picker(interaction, self.message, note=f"✅ Deleted **{entry['name']}**.")
+
+    @discord.ui.button(label="Back", style=ButtonStyle.blurple)
+    async def back(self, interaction, button):
+        await show_entry_picker(interaction, self.message)
+
 
 class ShowModal(Modal):
 
@@ -181,34 +279,26 @@ class ShowModal(Modal):
             TextInput(label = "What season are you currently on? (default 1)", min_length=1,max_length=3, required=False, default="1")
         ]
         for i in self.fields: self.add_item(i)
-    
+
     async def on_submit(self, interaction):
+        show = self.fields[0].value.strip()
         try:
-            show = self.fields[0].value
             seasons = int(self.fields[1].value)
-            current = int(self.fields[2].value)
-            if seasons < current:
-                await interaction.response.edit_message(embed=FAILED_ADD, view=None)
-                return
+            current = int(self.fields[2].value or 1)
+        except ValueError:
+            seasons = current = 0
 
-            guild_id = interaction.guild.id
-            wl = WATCHLIST.find_one({"_id" : guild_id})
-            entries = wl["entries"]
-            toInsert = WatchListEntry(
-                name = show,
-                status = 1,
-                curr= current,
-                total= seasons
-            )
-            entries.append(toInsert.__dict__)
-            entries.sort(key = lambda x : (x["status"], x["name"]))
-            embed = generate_wl_page(1, entries)
-
-            update_watchlist(guild_id, entries)
-            await self.message.edit(embed=embed)
-            await interaction.response.edit_message(embed=SUCCESSFUL_ADD, view=None)
-        except Exception as e:
+        if not show or not 1 <= current <= seasons:
             await interaction.response.edit_message(embed=FAILED_ADD, view=None)
+            return
+
+        toInsert = WatchListEntry(
+            name = show,
+            status = 1,
+            curr= current,
+            total= seasons
+        )
+        await add_entry(interaction, self.message, toInsert)
 
 class MovieModal(Modal):
 
@@ -218,48 +308,29 @@ class MovieModal(Modal):
         self.client = client
         self.inp = TextInput(label="What is the name of the movie?", min_length=1, max_length=32, required=True)
         self.add_item(self.inp)
-    
-    async def on_submit(self, interaction):
-        try:
-            movie = self.inp.value
-            guild_id = interaction.guild.id
-            wl = WATCHLIST.find_one({"_id" : guild_id})
-            current_page = wl["current_page"]
-            entries = wl["entries"]
 
-            toInsert = WatchListEntry(name = movie)
-            entries.append(toInsert.__dict__)
-            embed = generate_wl_page(current_page, entries)
-            entries.sort(key = lambda x : (x["status"], x["name"]))
-            await self.message.edit(embed=embed)
-            await interaction.response.edit_message(embed=SUCCESSFUL_ADD, view=None)
-            update_watchlist(guild_id, entries)
-        except Exception as e:
-            print(e)
+    async def on_submit(self, interaction):
+        movie = self.inp.value.strip()
+        if not movie:
             await interaction.response.edit_message(embed=FAILED_ADD, view=None)
-        
-    
+            return
+
+        await add_entry(interaction, self.message, WatchListEntry(name = movie))
+
+
 class DirectionButton(Button):
     def __init__(self, client, mode):
         self.mode = mode
         self.client = client
         super().__init__(label=f"{DIRECTIONS[self.mode]}", style = discord.ButtonStyle.green, custom_id=mode)
-    
+
     async def callback(self, interaction):
         guild_id = interaction.guild.id
-        wl = WATCHLIST.find_one({"_id" : guild_id})
-        current_page = wl["current_page"]
-        entries = wl["entries"]
-        if self.mode == "left":
-            if current_page == 1:
-                await interaction.response.send_message(embed=OUT_OF_BOUNDS, ephemeral=True)
-                return
-            current_page -=1
-        else:
-            if current_page + 1 > ceil(len(entries)/10):
-                await interaction.response.send_message(embed=OUT_OF_BOUNDS, ephemeral=True)
-                return
-            current_page +=1
-        
-        WATCHLIST.update_one(wl, {"$set" : {"current_page" : current_page}})
-        await interaction.response.edit_message(embed=generate_wl_page(current_page, entries))
+        entries, current_page = load_watchlist(guild_id)
+        page = clamp_wl_page(current_page + (-1 if self.mode == "left" else 1), entries)
+        if page == clamp_wl_page(current_page, entries):
+            await interaction.response.send_message(embed=OUT_OF_BOUNDS, ephemeral=True)
+            return
+
+        WATCHLIST.update_one({"_id" : guild_id}, {"$set" : {"current_page" : page}})
+        await interaction.response.edit_message(embed=generate_wl_page(page, entries))

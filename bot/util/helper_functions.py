@@ -1,89 +1,41 @@
-from util.constants import VC_EVENTS, EVENT_ARCHIVE_DIR, cluster
-import os
-from datetime import datetime
-import json
-from bson import ObjectId
+import asyncio
+from datetime import datetime, timezone
 from discord import Embed, Color
 from math import ceil
 
-from util.classes.FMUser import FMUser
-from util.constants import USERS, BOARDS, WATCHLIST_EMBED, WL_EMOJIS
+from util.constants import BOARDS, WATCHLIST_EMBED, WL_EMOJIS
+from util.dataclasses import User
 
 
+async def run_db(func, *args, **kwargs):
+    """Run a blocking database call off of the event loop"""
+    return await asyncio.to_thread(func, *args, **kwargs)
 
-class JSONEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, (ObjectId, datetime)):
-            return str(obj)
-        return super().default(obj)
+def user_defaults(*exclude):
+    """Default fields of a new user, for use in $setOnInsert. Exclude fields the same update already writes"""
+    defaults = User(_id=None).__dict__
+    del defaults["_id"]
+    for field in exclude:
+        del defaults[field]
+    return defaults
 
 def leveled_up(current_xp, current_level):
     new_level = int(current_xp** (1/2.5))
     return new_level > current_level
 
-def archive_event_data():
-    all_events = VC_EVENTS.find()
-    event_list = list(all_events)
-    dir_files = os.listdir(EVENT_ARCHIVE_DIR)
-    sorted_names = sorted(dir_files, key = lambda x : int(x.split("_")[0]))
-    suffix = "_archive.json"
-    archive_num = 0 if not dir_files else int(sorted_names[-1].split("_")[0]) + 1
-    filename = str(archive_num) + suffix
-
-    with open(EVENT_ARCHIVE_DIR + filename, "w") as f:
-        json.dump(event_list, f, indent = 2, cls = JSONEncoder)
-    
-    VC_EVENTS.delete_many({})
-
-def get_size_and_limit():
-    coll_stats = cluster.command("collstats", "vcevents")
-    limit, size = coll_stats["storageSize"], coll_stats["size"]
-    return limit, size
-
-def handle_get_top_call(interaction, target, time, mode):
-    """Handle logic to create embeds for get_top_x calls"""
-    target = target if target else interaction.user
-    time = time.value if time else "Overall"
-    guild_id = interaction.guild.id
-    user_id = target.id
-    primary_key = {"guild_id" : guild_id, "user_id" : user_id}
-    user_data = USERS.find_one({"_id" : primary_key})
-    fm_username = user_data["last_fm"]
-
-    # Username does not set
-    if not fm_username:
-        return Embed(color = Color.red(), description = "You do not have a LastFM account setup. Use /lastfm set to set your username.")
-
-    fm_obj = FMUser(fm_username)
-
-    # Username does not exist
-    if not fm_obj.is_valid():
-        return Embed(color = Color.red(), description = f"**{fm_username}** is not a valid username according to LastFM. Use /lastfm set to set your username.")
-    
-    funcs = {
-        "artists" : fm_obj.get_top_artists,
-        "albums" : fm_obj.get_top_albums,
-        "tracks" : fm_obj.get_top_tracks
-    }
-
-    description = funcs[mode](time)
-
-    # No data received
-    if not description:
-        return
-    
-    embed = Embed(
-        color = Color.red(), 
-        title = f"{target.name}'s Top {time} {mode}",
-        description = description)
-    embed.set_author(name = interaction.user.name, icon_url= interaction.user.avatar.url)
-    return embed
+def board_page_count(guild_id):
+    server_boards = BOARDS.find_one({"_id" : guild_id})
+    num_boards = len(server_boards["boards"]) if server_boards else 0
+    return max(1, ceil(num_boards / 5))
 
 def board_view_description(guild_id, page):
     start = (page - 1) * 5
     server_boards = BOARDS.find_one({"_id" : guild_id})
-    boards = server_boards["boards"]
+    boards = server_boards["boards"] if server_boards else []
     num_boards = len(boards)
+    if num_boards == 0:
+        return "There are no boards yet. Use ➕ to create one."
+
     desciption = ""
     for i in range(start, start + 5):
         if i >= num_boards:
@@ -95,43 +47,35 @@ def board_view_description(guild_id, page):
 
     return desciption
 
+def board_players(info):
+    """Get a board's (user_id, score) pairs, highest score first"""
+    # Boards made back when there was a cursor still hold a (-1, -1) placeholder row
+    players = [(str(user_id), score) for user_id, score in info["scores"] if str(user_id) != "-1"]
+    return sorted(players, key = lambda x : x[1], reverse = True)
+
 def board_info_embed(info, guild_members):
 
     name = info["name"]
-    cursor = info["cursor"]
-    
-    scores = info["scores"]
-
     last_edited_time = info["last_edited_time"]
     last_edited_user = info["last_edited_user"]
-    player_count = len(scores) - 1
     embed = Embed(title = name, color = Color.red())
     description = ""
     id_to_member = {user.id : user for user in guild_members}
 
-    for rank, user in enumerate(scores):
+    for rank, (user_id, score) in enumerate(board_players(info)):
         prefix = "👑" if rank == 0 else str(rank + 1)
-        to_add = ""
-        user_id, score = user
-        user_id = int(user_id)
-        if user_id not in id_to_member:
-            continue
+        description += f"`{prefix}` <@{user_id}> - {score}\n"
 
-        member_obj = id_to_member[user_id]
-        to_add += f"`{prefix}` {member_obj.mention} - {score}"
-        if rank == cursor:
-            to_add += " ⬅️"
-        
-        description += to_add + "\n"
-    
-    description += "`👤` **Add/Remove a player!**"
-    if cursor == player_count:
-        description += " ⬅️"
+    if not description:
+        description = "Nobody is on this board yet. Use 👤 to add players."
 
-    footer_text = f"Last edit at {last_edited_time} by "
+    footer_text = "Last edit by "
     footer_text += id_to_member[last_edited_user].name if last_edited_user in id_to_member else "Unknown"
     embed.description = description
     embed.set_footer(text = footer_text)
+    if isinstance(last_edited_time, datetime):
+        # Stored in UTC. As the embed's timestamp, Discord shows it in each viewer's own timezone
+        embed.timestamp = last_edited_time.replace(tzinfo = timezone.utc)
     return embed
 
 
@@ -142,17 +86,27 @@ def sort_dict(dictionary):
 def parse_id(x):
     return int(x[len(x)-18::])
 
+def sort_wl_entries(entries):
+    """Order entries the way the watchlist shows them: by status, then alphabetically"""
+    return sorted(entries, key = lambda x : (x["status"], x["name"].lower()))
+
+def clamp_wl_page(page, entries):
+    """Get the nearest page that exists, as deleting entries can leave the current one past the end"""
+    page_count = max(1, ceil(len(entries)/10))
+    return min(max(page, 1), page_count)
+
 def generate_wl_page(page, entries):
     if len(entries) == 0:
         return WATCHLIST_EMBED
+    entries = sort_wl_entries(entries)
+    page = clamp_wl_page(page, entries)
     start = 10 * (page - 1)
     page_count = ceil(len(entries)/10)
-    end = start + 10 if page != page_count else len(entries)
     ind = start
     desc = ""
     title = "Watch List (Page {}/{})".format(page, page_count)
-    for entry in entries[start:end]:
-        name, status, curr, total = entry.values()
+    for entry in entries[start:start + 10]:
+        name, status, curr, total = entry["name"], entry["status"], entry["curr"], entry["total"]
         if curr == None:
             desc += f"`{ind+1}` " + f"🎥 **{name}** {WL_EMOJIS[status]}" + "\n"
         else:

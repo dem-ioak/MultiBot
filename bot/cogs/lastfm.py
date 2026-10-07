@@ -1,82 +1,246 @@
 import discord
-from discord import Embed, Color, guild, app_commands
-from discord.ext import commands, tasks
+from discord import Embed, Color, app_commands
+from discord.ext import commands
 from discord.app_commands import Choice
 
-from util.helper_functions import handle_get_top_call
-from util.classes.FMUser import FMUser, convert_title
+from util.classes.FMUser import FMUser, FMError, find_artist, find_track
 from util.constants import USERS
-
-import os
+from util.helper_functions import user_defaults
 from util.log_manager import get_logger
+
+import asyncio
+import os
 import requests
-from dotenv import load_dotenv
-
-load_dotenv()
-
+import time as time_module
 
 CHOICES = [
+    Choice(name="Overall", value="overall"),
     Choice(name="Weekly", value="7day"),
     Choice(name="Monthly", value="1month"),
     Choice(name="Tri-Monthly", value="3month"),
-    Choice(name="Bi-Anually", value="6month"),
+    Choice(name="Bi-Annually", value="6month"),
     Choice(name="Yearly", value="12month"),
 ]
 
-NO_USERNAME_EMBED = Embed(
-    description="You have not yet set your **Last.FM** username! Use `fm set (username)` to get started.",
-    color=Color.red(),
-)
+SPOTIFY_TIMEOUT = 10
+EMBED_DESCRIPTION_LIMIT = 4096
+MAX_CONCURRENT_REQUESTS = 5
 
-SPOTIFY_CLIENT = os.getenv("SPOTIFY_CLIENT")
-SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
+
+def error_embed(description):
+    return Embed(description=description, color=Color.red())
+
+
+def no_username_embed(member, invoker):
+    if member == invoker:
+        return error_embed(
+            "You have not yet set your **LastFM** username! Use `/lastfm set` to get started."
+        )
+    return error_embed(
+        f"**{member.name}** has not yet set their **LastFM** username! They can use `/lastfm set` to get started."
+    )
+
+
+def ranked_description(entries, unit="plays"):
+    """Build a numbered embed description out of (name, playcount) pairs"""
+    lines = [
+        f"`{i + 1}` **{name}** - {playcount} {unit}"
+        for i, (name, playcount) in enumerate(entries)
+    ]
+    return "\n".join(lines)[:EMBED_DESCRIPTION_LIMIT]
+
+
+spotify_session = requests.Session()
+spotify_token = {"value": None, "expires_at": 0}
+
 
 def get_spotify_access_token():
-    URL = "https://accounts.spotify.com/api/token"
-    headers = {
-        "Content-Type" : "application/x-www-form-urlencoded"
-    }
-    
-    data = {
-        "grant_type" : "client_credentials",
-        "client_id" : SPOTIFY_CLIENT,
-        "client_secret" : SPOTIFY_CLIENT_SECRET
-    }
-    
-    resp = requests.post(URL, headers = headers, data = data)
-    access_token = resp.json()["access_token"]
-    return access_token
+    """Get a Spotify access token, reusing the current one until it is about to expire"""
+    if spotify_token["value"] and time_module.monotonic() < spotify_token["expires_at"]:
+        return spotify_token["value"]
 
-def search_for_id(album_name, headers, artist = None):
-    URL = f"https://api.spotify.com/v1/search?q=\"{album_name}\""
-    if artist:
-        URL += f"%20artist:\"{artist}\""
-        
-    URL += "&type=album"
-    resp = requests.get(URL, headers=headers)
-    id_ = resp.json()["albums"]["items"][0]["id"]
-    return id_
-
-def get_album_info(album_id, headers):
-    URL = f"https://api.spotify.com/v1/albums/{album_id}"
-    resp = requests.get(URL, headers=headers)
+    resp = spotify_session.post(
+        "https://accounts.spotify.com/api/token",
+        data={
+            "grant_type": "client_credentials",
+            "client_id": os.getenv("SPOTIFY_CLIENT"),
+            "client_secret": os.getenv("SPOTIFY_CLIENT_SECRET"),
+        },
+        timeout=SPOTIFY_TIMEOUT,
+    )
+    resp.raise_for_status()
     data = resp.json()
-    album_name = data["name"]
-    artist_name = data["artists"][0]["name"]
-    track_items = data["tracks"]["items"]
-    tracklist = [track["name"] for track in track_items]
-    return (album_name, artist_name, tracklist)
+    spotify_token["value"] = data["access_token"]
+    spotify_token["expires_at"] = time_module.monotonic() + data.get("expires_in", 3600) - 60
+    return spotify_token["value"]
+
+
+def search_for_id(album_name, headers, artist=None):
+    query = f'"{album_name}"'
+    if artist:
+        query += f' artist:"{artist}"'
+
+    resp = spotify_session.get(
+        "https://api.spotify.com/v1/search",
+        headers=headers,
+        params={"q": query, "type": "album", "limit": 1},
+        timeout=SPOTIFY_TIMEOUT,
+    )
+    resp.raise_for_status()
+    items = [item for item in resp.json()["albums"]["items"] if item]
+    return items[0]["id"] if items else None
+
+
+def get_album_info(album_name, artist=None):
+    """Look an album up on Spotify, returning (album name, artist name, tracklist) or None"""
+    headers = {"Authorization": f"Bearer {get_spotify_access_token()}"}
+    album_id = search_for_id(album_name, headers, artist)
+    if not album_id:
+        return None
+
+    resp = spotify_session.get(
+        f"https://api.spotify.com/v1/albums/{album_id}",
+        headers=headers,
+        timeout=SPOTIFY_TIMEOUT,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    tracklist = [track["name"] for track in data["tracks"]["items"]]
+    return (data["name"], data["artists"][0]["name"], tracklist)
+
 
 class Lastfm(commands.Cog):
     def __init__(self, client):
         self.client = client
+        self.request_limit = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
     lastfm = app_commands.Group(
-        name="lastfm", description="Commands utilizing LastFM Functionality"
+        name="lastfm",
+        description="Commands utilizing LastFM Functionality",
+        guild_only=True,
     )
+
+    async def cog_app_command_error(self, interaction: discord.Interaction, error):
+        # Logging is left to the global handler in main.py, this only tells the user
+        error = getattr(error, "original", error)
+        if isinstance(error, FMError):
+            embed = error_embed(f"LastFM returned an error: {error}")
+        else:
+            embed = error_embed("Something went wrong while running this command.")
+
+        if interaction.response.is_done():
+            await interaction.followup.send(embed=embed)
+        else:
+            await interaction.response.send_message(embed=embed)
+
+    async def run_blocking(self, func, *args):
+        """Run a blocking API call off of the event loop"""
+        async with self.request_limit:
+            return await asyncio.to_thread(func, *args)
+
+    async def get_fm_user(self, interaction, member):
+        """Get the FMUser of a member. If they have none set, respond saying so and return None"""
+        primary_key = {"guild_id": interaction.guild.id, "user_id": member.id}
+        user_data = USERS.find_one({"_id": primary_key})
+        fm_username = user_data.get("last_fm") if user_data else None
+        if not fm_username:
+            await interaction.followup.send(
+                embed=no_username_embed(member, interaction.user)
+            )
+            return None
+
+        return FMUser(fm_username)
+
+    async def get_now_playing(self, interaction, member):
+        """Get what a member is playing. If that is not possible, respond saying so and return None"""
+        fm_user = await self.get_fm_user(interaction, member)
+        if not fm_user:
+            return None
+
+        now_playing = await self.run_blocking(fm_user.get_np)
+        if not now_playing:
+            await interaction.followup.send(
+                embed=error_embed(f"**{member.name}** has not listened to anything yet.")
+            )
+
+        return now_playing
+
+    async def resolve_artist(self, interaction, member, artist):
+        """Use the given artist if there is one, otherwise whoever the member is playing"""
+        if not artist:
+            now_playing = await self.get_now_playing(interaction, member)
+            return now_playing["artist"] if now_playing else None
+
+        found = await self.run_blocking(find_artist, artist)
+        if not found:
+            await interaction.followup.send(
+                embed=error_embed(f"Could not find an artist named **{artist}**.")
+            )
+
+        return found
+
+    async def send_top(self, interaction, target, time, mode):
+        """Handle logic for all forms of top(artists/albums/tracks)"""
+        await interaction.response.defer()
+        target = target or interaction.user
+        fm_user = await self.get_fm_user(interaction, target)
+        if not fm_user:
+            return
+
+        period = time.value if time else "overall"
+        entries = await self.run_blocking(fm_user.get_top, mode, period)
+
+        description = ""
+        for i, entry in enumerate(entries):
+            description += f"`{i + 1}` **{entry['name']}**"
+            if entry["artist"]:
+                description += f" by **{entry['artist']}**"
+            description += f" ({entry['playcount']} plays)\n"
+
+        embed = Embed(
+            color=Color.red(),
+            title=f"Top {mode.title()}s ({time.name if time else 'Overall'})",
+            description=description or "No listening records for this timeframe",
+        )
+        embed.set_author(name=target.name, icon_url=target.display_avatar.url)
+        await interaction.followup.send(embed=embed)
+
+    async def send_comparison(self, interaction, title, get_plays):
+        """Rank every user in this server with a LastFM set by `get_plays(fm_user)`"""
+
+        async def fetch(member, fm_username):
+            try:
+                return member.name, await self.run_blocking(get_plays, FMUser(fm_username))
+            except FMError:
+                # Most likely a username that no longer exists, leave them out
+                return None
+
+        fm_users = USERS.find(
+            {"_id.guild_id": interaction.guild.id, "last_fm": {"$ne": None}},
+            {"last_fm": 1},
+        )  # All users IN THIS SERVER, with a FM set
+        fetches = []
+        for user in fm_users:
+            member = interaction.guild.get_member(user["_id"]["user_id"])
+            if member and user["last_fm"]:
+                fetches.append(fetch(member, user["last_fm"]))
+
+        entries = [entry for entry in await asyncio.gather(*fetches) if entry]
+        entries.sort(key=lambda x: x[1], reverse=True)
+
+        embed = Embed(
+            title=title,
+            description=ranked_description(entries, "Plays") or "Nobody has listened to this",
+            color=Color.red(),
+        )
+        await interaction.followup.send(embed=embed)
 
     @lastfm.command(
         name="topartists", description="Generate a list of any users Top Artists."
+    )
+    @app_commands.describe(
+        target="Whose top artists to show (defaults to you)",
+        time="Timeframe to look at (defaults to overall)",
     )
     @app_commands.choices(time=CHOICES)
     async def topartists(
@@ -87,12 +251,14 @@ class Lastfm(commands.Cog):
     ):
         log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
         log.info(f"COMMAND_INVOKED: /lastfm topartists [target={target}, time={time}]")
-        await interaction.response.defer()
-        embed = handle_get_top_call(interaction, target, time, "artists")
-        await interaction.followup.send(embed=embed)
+        await self.send_top(interaction, target, time, "artist")
 
     @lastfm.command(
         name="topalbums", description="Generate a list of any users Top Albums."
+    )
+    @app_commands.describe(
+        target="Whose top albums to show (defaults to you)",
+        time="Timeframe to look at (defaults to overall)",
     )
     @app_commands.choices(time=CHOICES)
     async def topalbums(
@@ -103,12 +269,14 @@ class Lastfm(commands.Cog):
     ):
         log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
         log.info(f"COMMAND_INVOKED: /lastfm topalbums [target={target}, time={time}]")
-        await interaction.response.defer()
-        embed = handle_get_top_call(interaction, target, time, "albums")
-        await interaction.followup.send(embed=embed)
+        await self.send_top(interaction, target, time, "album")
 
     @lastfm.command(
         name="toptracks", description="Generate a list of any users Top Tracks."
+    )
+    @app_commands.describe(
+        target="Whose top tracks to show (defaults to you)",
+        time="Timeframe to look at (defaults to overall)",
     )
     @app_commands.choices(time=CHOICES)
     async def toptracks(
@@ -119,44 +287,49 @@ class Lastfm(commands.Cog):
     ):
         log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
         log.info(f"COMMAND_INVOKED: /lastfm toptracks [target={target}, time={time}]")
-        await interaction.response.defer()
-        embed = handle_get_top_call(interaction, target, time, "tracks")
-        await interaction.followup.send(embed=embed)
+        await self.send_top(interaction, target, time, "track")
 
-    # TODO: This
     @lastfm.command(
         name="nowplaying", description="Display what song you are currently streaming."
     )
+    @app_commands.describe(target="Whose current song to show (defaults to you)")
     async def nowplaying(
         self, interaction: discord.Interaction, target: discord.Member = None
     ):
         log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
         log.info(f"COMMAND_INVOKED: /lastfm nowplaying [target={target}]")
-        guild_id = interaction.guild.id
-        target = target if target else interaction.user
-        user_id = target.id if target else interaction.user.id
-        primary_key = {"guild_id": guild_id, "user_id": user_id}
-        user_data = USERS.find_one({"_id": primary_key})
-        fm_username = user_data["last_fm"]
-        if not fm_username:
-            await interaction.response.send_message(embed=NO_USERNAME_EMBED)
+        await interaction.response.defer()
+        target = target or interaction.user
+        fm_user = await self.get_fm_user(interaction, target)
+        if not fm_user:
             return
 
-        fm_user = FMUser(fm_username)
-        name, artist, img, album = fm_user.get_np().values()
-        playcount = fm_user.get_plays_track(artist, name)
+        now_playing = await self.run_blocking(fm_user.get_np)
+        if not now_playing:
+            await interaction.followup.send(
+                embed=error_embed(f"**{target.name}** has not listened to anything yet.")
+            )
+            return
+
+        name, artist, img, album = now_playing.values()
+        playcount = await self.run_blocking(fm_user.get_plays_track, artist, name)
         embed = Embed()
         embed.color = Color.red()
         embed.add_field(name="Track", value=name, inline=True)
         embed.add_field(name="Artist", value=artist, inline=True)
-        embed.set_footer(text="Album: {} - Playcount: {}".format(album, playcount))
-        embed.set_thumbnail(url=img)
-        embed.set_author(name=target.name, icon_url=target.avatar.url)
-        await interaction.response.send_message(embed=embed)
+        embed.set_footer(text="Album: {} - Playcount: {}".format(album or "N/A", playcount))
+        if img:
+            embed.set_thumbnail(url=img)
+        embed.set_author(name=target.name, icon_url=target.display_avatar.url)
+        await interaction.followup.send(embed=embed)
 
     @lastfm.command(
         name="toptracksartist",
         description="Generate your most played songs from a given artist",
+    )
+    @app_commands.describe(
+        target="Whose most played songs to show (defaults to you)",
+        artist="Artist to look at (defaults to the one currently playing)",
     )
     async def toptracksartist(
         self,
@@ -166,202 +339,187 @@ class Lastfm(commands.Cog):
     ):
         log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
         log.info(f"COMMAND_INVOKED: /lastfm toptracksartist [target={target}, artist={artist}]")
-        embed = Embed(color=Color.red())
-        guild_id = interaction.guild.id
-        target = target if target else interaction.user
-        user_id = target.id if target else interaction.user.id
-        primary_key = {"guild_id": guild_id, "user_id": user_id}
-        user_data = USERS.find_one({"_id": primary_key})
-        fm_username = user_data["last_fm"]
-        if not fm_username:
-            await interaction.response.send_message(embed=NO_USERNAME_EMBED)
+        await interaction.response.defer()
+        target = target or interaction.user
+        fm_user = await self.get_fm_user(interaction, target)
+        if not fm_user:
             return
 
-        await interaction.response.defer()
-        res = ""
-        fm_user = FMUser(fm_username)
-        artist = artist if artist else fm_user.get_np()["artist"]
-        data = fm_user.get_top_tracks_artist(artist)
-        for i, val in enumerate(data):
-            res += f"`{i + 1}` **{val[0]}** - {val[1]} plays\n"
+        artist = await self.resolve_artist(interaction, target, artist)
+        if not artist:
+            return
 
-        embed.description = res if res else "No listening records for this artist"
-        embed.set_author(name=target.name, icon_url=target.avatar.url)
+        data = await self.run_blocking(fm_user.get_top_tracks_artist, artist)
+        embed = Embed(color=Color.red(), title=f"Top Tracks by {artist}")
+        embed.description = (
+            ranked_description(data) or "No listening records for this artist"
+        )
+        embed.set_author(name=target.name, icon_url=target.display_avatar.url)
         await interaction.followup.send(embed=embed)
 
     @lastfm.command(name="set", description="Set your lastfm username")
+    @app_commands.describe(username="Your LastFM username")
     async def set(self, interaction: discord.Interaction, username: str):
         log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
         log.info(f"COMMAND_INVOKED: /lastfm set [username={username}]")
+        await interaction.response.defer()
+        username = username.strip()
         fm_obj = FMUser(username)
-        guild_id = interaction.guild.id
-        user_id = interaction.user.id
-        if not fm_obj.is_valid():
-            embed = Embed(
-                color=Color.red(),
-                description=f"**{username}** is not a valid username according to LastFM. Use /lastfm set to set your username.",
+        if not await self.run_blocking(fm_obj.is_valid):
+            embed = error_embed(
+                f"**{username}** is not a valid username according to LastFM. Use /lastfm set to set your username."
             )
         else:
-            primary_key = {"guild_id": guild_id, "user_id": user_id}
-            USERS.update_one({"_id": primary_key}, {"$set": {"last_fm": username}})
+            primary_key = {"guild_id": interaction.guild.id, "user_id": interaction.user.id}
+            # Users are normally created by the events cog, but make sure the name is never silently dropped
+            USERS.update_one(
+                {"_id": primary_key},
+                {"$set": {"last_fm": username}, "$setOnInsert": user_defaults("last_fm")},
+                upsert=True,
+            )
             embed = Embed(
                 color=Color.green(),
                 description=f"Successfully set your LastFM username to **{username}**",
             )
 
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
 
     @lastfm.command(
         name="compareartist",
         description="Compare every user's playcount of a given artist",
     )
-    async def compareartist(self, interaction: discord.Interaction):
+    @app_commands.describe(
+        target="Use the artist this user is currently playing (defaults to you)",
+        artist="Artist to compare (defaults to the one currently playing)",
+    )
+    async def compareartist(
+        self,
+        interaction: discord.Interaction,
+        target: discord.Member = None,
+        artist: str = None,
+    ):
         log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
-        log.info(f"COMMAND_INVOKED: /lastfm compareartist")
-        guild_id = interaction.guild.id
-        user_id = interaction.user.id
-        primary_key = {"guild_id": guild_id, "user_id": user_id}
-        user_data = USERS.find_one({"_id": primary_key})
-        user_fm = user_data["last_fm"]
-        if not user_fm:
-            await interaction.response.send_message(embed=NO_USERNAME_EMBED)
+        log.info(f"COMMAND_INVOKED: /lastfm compareartist [target={target}, artist={artist}]")
+        await interaction.response.defer()
+        artist = await self.resolve_artist(interaction, target or interaction.user, artist)
+        if not artist:
             return
 
-        await interaction.response.defer()
-        user_fm_obj = FMUser(user_fm)
-        now_playing = user_fm_obj.get_np()
-        artist = now_playing["artist"]
-
-        fm_users = USERS.find(
-            {"_id.guild_id": guild_id, "last_fm": {"$ne": None}}
-        )  # All users IN THIS SERVER, with a FM set
-        entries = []
-        for user in fm_users:
-            user_id = user["_id"]["user_id"]
-            user_obj = self.client.get_user(user_id)
-
-            if not user_obj:
-                continue
-
-            fm_username = user["last_fm"]
-            fm_obj = FMUser(fm_username)
-            playcount = int(fm_obj.get_plays_artist(artist))
-            entries.append((user_obj.name, playcount))
-
-        entries.sort(key=lambda x: x[1], reverse=True)
-        description = str()
-        for i, (username, playcount) in enumerate(entries):
-            description += f"`{i + 1}` **{username}** - {playcount} Plays\n"
-
-        embed = Embed(
-            title=f"Top Listeners for {artist}",
-            description=description,
-            color=Color.red(),
+        await self.send_comparison(
+            interaction,
+            f"Top Listeners for {artist}",
+            lambda fm_user: fm_user.get_plays_artist(artist),
         )
-        await interaction.followup.send(embed=embed)
 
     @lastfm.command(
         name="comparetrack",
         description="Compare every user's playcount of a given track",
     )
+    @app_commands.describe(
+        target="Use the track this user is currently playing (defaults to you)",
+        track="Track to compare (defaults to the one currently playing)",
+        artist="Artist of the track, to narrow down the search",
+    )
     async def comparetrack(
-        self, interaction: discord.Interaction, target: discord.Member = None
+        self,
+        interaction: discord.Interaction,
+        target: discord.Member = None,
+        track: str = None,
+        artist: str = None,
     ):
         log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
-        log.info(f"COMMAND_INVOKED: /lastfm comparetrack [target={target}]")
-        guild_id = interaction.guild.id
-        user_id = interaction.user.id
-        primary_key = {"guild_id": guild_id, "user_id": user_id}
-        user_data = USERS.find_one({"_id": primary_key})
-        user_fm = user_data["last_fm"]
-        if not user_fm:
-            await interaction.response.send_message(embed=NO_USERNAME_EMBED)
-            return
-
+        log.info(f"COMMAND_INVOKED: /lastfm comparetrack [target={target}, track={track}, artist={artist}]")
         await interaction.response.defer()
-        user_fm_obj = FMUser(user_fm)
-        now_playing = user_fm_obj.get_np()
-        artist, track = now_playing["artist"], now_playing["song_name"]
+        if track:
+            found = await self.run_blocking(find_track, track, artist)
+            if not found:
+                searched = f"**{track}** by **{artist}**" if artist else f"**{track}**"
+                await interaction.followup.send(
+                    embed=error_embed(f"Could not find a track named {searched}.")
+                )
+                return
+            track, artist = found
+        elif artist:
+            await interaction.followup.send(
+                embed=error_embed("You need to specify a `track` along with the `artist`.")
+            )
+            return
+        else:
+            now_playing = await self.get_now_playing(interaction, target or interaction.user)
+            if not now_playing:
+                return
+            artist, track = now_playing["artist"], now_playing["song_name"]
 
-        fm_users = USERS.find(
-            {"_id.guild_id": guild_id, "last_fm": {"$ne": None}}
-        )  # All users IN THIS SERVER, with a FM set
-        entries = []
-        for user in fm_users:
-            user_id = user["_id"]["user_id"]
-            user_obj = self.client.get_user(user_id)
-
-            if not user_obj:
-                continue
-
-            fm_username = user["last_fm"]
-            fm_obj = FMUser(fm_username)
-            playcount = int(fm_obj.get_plays_track(artist, track))
-            entries.append((user_obj.name, playcount))
-
-        entries.sort(key=lambda x: x[1], reverse=True)
-        description = str()
-        for i, (username, playcount) in enumerate(entries):
-            description += f"`{i + 1}` **{username}** - {playcount} Plays\n"
-
-        embed = Embed(
-            title=f"Top Listeners for {track} by {artist}",
-            description=description,
-            color=Color.red(),
+        await self.send_comparison(
+            interaction,
+            f"Top Listeners for {track} by {artist}",
+            lambda fm_user: fm_user.get_plays_track(artist, track),
         )
-        await interaction.followup.send(embed=embed)
 
     @lastfm.command(
         name="playsalbum", description="Get the playcount for every song on an album"
+    )
+    @app_commands.describe(
+        target="Whose playcounts to show (defaults to you)",
+        album="Album to look at (defaults to the one currently playing)",
+        artist="Artist of the album, to narrow down the search",
     )
     async def playsalbum(
         self,
         interaction: discord.Interaction,
         target: discord.Member = None,
         album: str = None,
-        artist: str = None
+        artist: str = None,
     ):
         log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
         log.info(f"COMMAND_INVOKED: /lastfm playsalbum [target={target}, album={album}, artist={artist}]")
-        guild_id = interaction.guild.id
-        target = target if target else interaction.user
-        user_id = target.id
-        primary_key = {"guild_id": guild_id, "user_id": user_id}
-        user_data = USERS.find_one({"_id": primary_key})
-        user_fm = user_data["last_fm"]
-        if not user_fm:
-            await interaction.response.send_message(embed=NO_USERNAME_EMBED)
+        await interaction.response.defer()
+        target = target or interaction.user
+        user_fm_obj = await self.get_fm_user(interaction, target)
+        if not user_fm_obj:
             return
 
-        await interaction.response.defer()
-        
-        user_fm_obj = FMUser(user_fm)
-        access_token = get_spotify_access_token()
-        headers = {"Authorization" : f"Bearer {access_token}"}
-        now_playing = user_fm_obj.get_np()
-        if not album and not artist:
-            album = now_playing["album"]
-            artist = now_playing["artist"]
-        
-        album_id = search_for_id(album_name=album, headers=headers, artist=artist)
-        album_name, artist_name, tracklist = get_album_info(album_id, headers)
-        
-        playcounts = []
-        for track_name in tracklist:
-            playcount = user_fm_obj.get_plays_track(artist_name, track_name)
-            playcounts.append((track_name, int(playcount)))
-        
-        playcounts.sort(key = lambda x : x[1], reverse=True)
-        description = ""
-        for i, (track_name, playcount) in enumerate(playcounts):
-            description += f"`{i+1}` **{track_name}** - {playcount} plays\n"
-        
+        if not album and artist:
+            await interaction.followup.send(
+                embed=error_embed("You need to specify an `album` along with the `artist`.")
+            )
+            return
+
+        if not album:
+            now_playing = await self.run_blocking(user_fm_obj.get_np)
+            if not now_playing or not now_playing["album"]:
+                await interaction.followup.send(
+                    embed=error_embed(
+                        f"Could not tell what album **{target.name}** is listening to. Try specifying an `album`."
+                    )
+                )
+                return
+            album, artist = now_playing["album"], now_playing["artist"]
+
+        album_info = await self.run_blocking(get_album_info, album, artist)
+        if not album_info:
+            searched = f"**{album}** by **{artist}**" if artist else f"**{album}**"
+            await interaction.followup.send(
+                embed=error_embed(f"Could not find an album named {searched}.")
+            )
+            return
+
+        album_name, artist_name, tracklist = album_info
+        counts = await asyncio.gather(
+            *(
+                self.run_blocking(user_fm_obj.get_plays_track, artist_name, track_name)
+                for track_name in tracklist
+            )
+        )
+        playcounts = sorted(zip(tracklist, counts), key=lambda x: x[1], reverse=True)
+
         embed = Embed()
         embed.title = f"Plays for songs on {album_name} by {artist_name}"
-        embed.description = description
+        embed.description = ranked_description(playcounts)
         embed.color = Color.red()
-        embed.set_author(name=target.name, icon_url=target.avatar.url)
+        embed.set_author(name=target.name, icon_url=target.display_avatar.url)
         await interaction.followup.send(embed=embed)
-        
+
+
 async def setup(client):
     await client.add_cog(Lastfm(client))

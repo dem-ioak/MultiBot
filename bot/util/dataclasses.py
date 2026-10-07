@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from uuid import uuid4
 from datetime import datetime
 
 from util.enums import EventType
@@ -10,6 +11,7 @@ class User:
     xp : int = 0
     level : int = 1
     birthday : datetime = None
+    timezone : str = None # IANA name used for birthday announcements, Eastern when not set
     banished_id : int = -1
     is_warned : bool = False
     last_fm : str = None
@@ -83,11 +85,10 @@ class Server:
 @dataclass
 class Board:
     name : str
-    cursor : int
     author : int
     last_edited_time : datetime
     last_edited_user : int
-    scores : dict
+    scores : list # [user_id, score] pairs
 
 @dataclass
 class WatchList:
@@ -100,9 +101,10 @@ class WatchList:
 @dataclass
 class WatchListEntry:
     name : str
-    status : int = 1
+    status : int = 1 # 1 = not started, 2 = watching, 3 = finished
     curr : int = None
     total : int = None
+    id : str = field(default_factory = lambda : uuid4().hex) # What edits find the entry by
 
 @dataclass
 class VCEvent:
@@ -111,3 +113,5 @@ class VCEvent:
     timestamp : datetime
     event_type : EventType
     channel_id : int
+    channel_name : str = None
+    synthetic : bool = False # Written by reconciliation rather than observed live

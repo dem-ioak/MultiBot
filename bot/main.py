@@ -20,6 +20,7 @@ class MyBot(commands.Bot):
             intents=discord.Intents.all(),
             application_id=APPLICATION_ID,
         )
+        self.listener_errors = 0  # Reported (and reset) by the daily tracking report
 
     async def setup_hook(self):
         cog_count, cogs_loaded = await self.load_cogs()
@@ -36,16 +37,15 @@ class MyBot(commands.Bot):
                 try:
                     await self.load_extension(f"cogs.{filename[:-3]}")
                     success += 1
-                except Exception as e:
-                    pass
-
-                    continue
+                except Exception:
+                    log.exception(f"Failed to load cog: {filename}")
                 
         log.info(f"Successfully loaded {success}/{count} cogs.")
         return count, success
 
-    async def on_error(self, *args, **kwargs):
-        pass
+    async def on_error(self, event_method, *args, **kwargs):
+        self.listener_errors += 1
+        get_logger(__name__).exception(f"LISTENER_FAILED: {event_method}")
 
 
 client = MyBot()
@@ -64,7 +64,17 @@ async def on_app_command_error(
             ephemeral=True,
         )
     else:
-        pass
+        error = getattr(error, "original", error)
+        name = interaction.command.qualified_name if interaction.command else "unknown"
+        get_logger(__name__).error(f"COMMAND_FAILED: /{name}", exc_info=error)
+        if not interaction.response.is_done():
+            await interaction.response.send_message(
+                embed=Embed(
+                    description="Something went wrong while running this command.",
+                    color=Color.red(),
+                ),
+                ephemeral=True,
+            )
 
 
 async def main():

@@ -3,6 +3,7 @@ from discord import Embed, Color
 from discord import Object as DObject
 from zoneinfo import ZoneInfo
 from datetime import datetime, time
+import os
 
 # MongoDB Stuff
 mongo_connection = MongoDBConnection()
@@ -15,7 +16,14 @@ WRAPPED = cluster["wrapped"]
 VC_EVENTS = cluster["vcevents"]
 BOARDS = cluster["boards"]
 WATCHLIST = cluster["watchlist"]
+WRAPPED_DAILY = cluster["wrappeddaily"]
+BOT_STATE = cluster["botstate"]
+POLL_REQUESTS = cluster["pollrequests"]
 EVENT_ARCHIVE_DIR = "bot/archive/"
+
+# Set WRAPPED_TRACKING=0 when running a second (dev) instance against the same database,
+# otherwise every message and voice event gets recorded twice
+TRACKING_ENABLED = os.getenv("WRAPPED_TRACKING", "1") != "0"
 MY_USER_ID = 739618992393682974
 DAMNIT_ID = 529893177524617221
 DAMNIT_GUILD = DObject(DAMNIT_ID)
@@ -83,6 +91,15 @@ DEPRECEATED = Embed(description= "This command is depreceated for now, and thus 
 EST_TIME = ZoneInfo("America/New_York")
 VIBE_TIME = time(hour=13, minute = 0, second = 0, microsecond = 0, tzinfo = EST_TIME)
 MIDNIGHT = time(hour=0, minute = 0, second = 0, microsecond = 0, tzinfo = EST_TIME)
+
+# Midnight lands on a quarter hour in every timezone (some are offset by 30 or 45 minutes),
+# so checking at each one catches everybody's
+BIRTHDAY_CHECK_MINUTES = 15
+BIRTHDAY_CHECK_TIMES = [
+    time(hour=hour, minute=minute, tzinfo=ZoneInfo("UTC"))
+    for hour in range(24)
+    for minute in range(0, 60, BIRTHDAY_CHECK_MINUTES)
+]
 
 # Rutgers Stuff
 OPEN_SECTION_URL = "https://sis.rutgers.edu/soc/api/openSections.json?year=2023&term=9&campus=NB"
