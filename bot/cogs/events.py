@@ -20,6 +20,7 @@ from util.buttons.watchlist_buttons import WatchListView
 from util.log_manager import get_logger
 
 GIF_HOSTS = ("tenor.com", "giphy.com", "klipy.com")
+SETUP_TIMEOUT = 120  # Seconds each startup step for wrapped tracking is given before it is abandoned
 JOIN_EVENTS = (EventType.JOIN_VC, EventType.JOIN_AFK)
 SESSION_EVENTS = (*JOIN_EVENTS, EventType.LEAVE_VC, EventType.LEAVE_AFK)
 STREAM_EVENTS = (EventType.START_STREAM, EventType.END_STREAM)
@@ -132,16 +133,25 @@ class Events(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
+        log = get_logger(__name__)
+        log.info(f"SETUP: Ready in {len(self.client.guilds)} servers, tracking {'on' if TRACKING_ENABLED else 'off'}")
+
+        # The boards / watchlist come first. Their buttons do nothing until this has ran, so it
+        # should never be left waiting on (or be stopped by) anything else that happens at startup
+        await self.refresh_features()
+
         if TRACKING_ENABLED:
-            log = get_logger(__name__)
             try:
-                await self.backfill_members()
-                await self.reconcile_voice()
+                await asyncio.wait_for(self.backfill_members(), SETUP_TIMEOUT)
+                await asyncio.wait_for(self.reconcile_voice(), SETUP_TIMEOUT)
             except Exception:
                 self.client.listener_errors += 1
                 log.exception("SETUP: Failed to prepare wrapped tracking")
         self.connected = True
+        log.info("SETUP: Finished")
 
+    async def refresh_features(self):
+        """Redraw each server's boards and watchlist messages, which is what makes their buttons work"""
         for server in self.client.guilds:
             log = get_logger(__name__, server=server.name)
             log.info("SETUP: Refreshing Watchlist / Leaderboards")

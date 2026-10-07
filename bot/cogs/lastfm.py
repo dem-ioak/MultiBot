@@ -2,6 +2,7 @@ import discord
 from discord import Embed, Color, app_commands
 from discord.ext import commands
 from discord.app_commands import Choice
+from discord.ui import View
 
 from util.classes.FMUser import FMUser, FMError, find_artist, find_track, artist_variants
 from util.constants import USERS
@@ -11,6 +12,7 @@ from util.log_manager import get_logger
 import asyncio
 import os
 import requests
+from math import ceil
 import time as time_module
 
 CHOICES = [
@@ -25,6 +27,11 @@ CHOICES = [
 SPOTIFY_TIMEOUT = 10
 EMBED_DESCRIPTION_LIMIT = 4096
 MAX_CONCURRENT_REQUESTS = 5
+
+PAGE_SIZE = 10
+PAGE_TIMEOUT = 300  # Seconds the arrows under a list keep working after they were last used
+TOP_LIST_SIZE = 100  # Entries fetched for topartists / topalbums / toptracks, 10 pages worth
+ARTIST_TRACKS_SIZE = 30  # Kept lower for toptracksartist, which has to scan the library to find them
 
 
 def error_embed(description):
@@ -41,13 +48,81 @@ def no_username_embed(member, invoker):
     )
 
 
-def ranked_description(entries, unit="plays"):
-    """Build a numbered embed description out of (name, playcount) pairs"""
-    lines = [
+def ranked_lines(entries, unit="plays"):
+    """Build numbered lines out of (name, playcount) pairs"""
+    return [
         f"`{i + 1}` **{name}** - {playcount} {unit}"
         for i, (name, playcount) in enumerate(entries)
     ]
-    return "\n".join(lines)[:EMBED_DESCRIPTION_LIMIT]
+
+
+def ranked_description(entries, unit="plays"):
+    """Build a numbered embed description out of (name, playcount) pairs"""
+    return "\n".join(ranked_lines(entries, unit))[:EMBED_DESCRIPTION_LIMIT]
+
+
+class PageView(View):
+    """Arrows to flip through a list that is too long for one embed, `PAGE_SIZE` lines at a time"""
+
+    def __init__(self, embed, lines, invoker_id, note=None):
+        super().__init__(timeout=PAGE_TIMEOUT)
+        self.embed = embed
+        self.lines = lines
+        self.invoker_id = invoker_id
+        self.note = note
+        self.page = 0
+        self.page_count = max(1, ceil(len(lines) / PAGE_SIZE))
+        self.message = None
+        self.show_page()
+
+    def show_page(self):
+        start = self.page * PAGE_SIZE
+        self.embed.description = "\n".join(self.lines[start:start + PAGE_SIZE])
+        footer = [self.note] if self.note else []
+        if self.page_count > 1:
+            footer.append(f"Page {self.page + 1}/{self.page_count}")
+        if footer:
+            self.embed.set_footer(text=" • ".join(footer))
+        self.previous_page.disabled = self.page == 0
+        self.next_page.disabled = self.page == self.page_count - 1
+
+    async def send(self, interaction):
+        # A list that fits on one page has no use for arrows
+        if self.page_count == 1:
+            await interaction.followup.send(embed=self.embed)
+        else:
+            self.message = await interaction.followup.send(embed=self.embed, view=self)
+
+    async def interaction_check(self, interaction: discord.Interaction):
+        if interaction.user.id == self.invoker_id:
+            return True
+        await interaction.response.send_message(
+            embed=error_embed("Only the person who ran this command can flip its pages."),
+            ephemeral=True,
+        )
+        return False
+
+    async def flip(self, interaction, change):
+        self.page = min(max(self.page + change, 0), self.page_count - 1)
+        self.show_page()
+        await interaction.response.edit_message(embed=self.embed, view=self)
+
+    @discord.ui.button(emoji="◀️", style=discord.ButtonStyle.gray)
+    async def previous_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.flip(interaction, -1)
+
+    @discord.ui.button(emoji="▶️", style=discord.ButtonStyle.gray)
+    async def next_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.flip(interaction, 1)
+
+    async def on_timeout(self):
+        # Grey the arrows out, so it is clear they have stopped working
+        self.previous_page.disabled = self.next_page.disabled = True
+        if self.message:
+            try:
+                await self.message.edit(view=self)
+            except discord.HTTPException:
+                pass  # The message was deleted in the meantime
 
 
 spotify_session = requests.Session()
@@ -188,22 +263,23 @@ class Lastfm(commands.Cog):
             return
 
         period = time.value if time else "overall"
-        entries = await self.run_blocking(fm_user.get_top, mode, period)
+        entries = await self.run_blocking(fm_user.get_top, mode, period, TOP_LIST_SIZE)
 
-        description = ""
+        lines = []
         for i, entry in enumerate(entries):
-            description += f"`{i + 1}` **{entry['name']}**"
+            line = f"`{i + 1}` **{entry['name']}**"
             if entry["artist"]:
-                description += f" by **{entry['artist']}**"
-            description += f" ({entry['playcount']} plays)\n"
+                line += f" by **{entry['artist']}**"
+            lines.append(line + f" ({entry['playcount']} plays)")
 
         embed = Embed(
             color=Color.red(),
             title=f"Top {mode.title()}s ({time.name if time else 'Overall'})",
-            description=description or "No listening records for this timeframe",
         )
         embed.set_author(name=target.name, icon_url=target.display_avatar.url)
-        await interaction.followup.send(embed=embed)
+        await PageView(
+            embed, lines or ["No listening records for this timeframe"], interaction.user.id
+        ).send(interaction)
 
     async def get_spellings_note(self, artist):
         """Describe which other spellings of an artist ("Giveon" for "GIVĒON") are being counted, if any.
@@ -361,15 +437,15 @@ class Lastfm(commands.Cog):
             return
 
         note = await self.get_spellings_note(artist)
-        data = await self.run_blocking(fm_user.get_top_tracks_artist, artist)
+        data = await self.run_blocking(fm_user.get_top_tracks_artist, artist, ARTIST_TRACKS_SIZE)
         embed = Embed(color=Color.red(), title=f"Top Tracks by {artist}")
-        if note:
-            embed.set_footer(text=note)
-        embed.description = (
-            ranked_description(data) or "No listening records for this artist"
-        )
         embed.set_author(name=target.name, icon_url=target.display_avatar.url)
-        await interaction.followup.send(embed=embed)
+        await PageView(
+            embed,
+            ranked_lines(data) or ["No listening records for this artist"],
+            interaction.user.id,
+            note,
+        ).send(interaction)
 
     @lastfm.command(name="set", description="Set your lastfm username")
     @app_commands.describe(username="Your LastFM username")
