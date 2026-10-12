@@ -3,8 +3,25 @@ from discord.ext import commands, tasks
 from discord import Embed, Color, app_commands
 import random
 from time import sleep
-from util.constants import INTEGER_CONVERSION_FAIL, USERS
+from datetime import datetime, timedelta
+from pymongo.errors import DuplicateKeyError
+from util.constants import INTEGER_CONVERSION_FAIL, USERS, RNG_SPINS, EST_TIME
+from util.helper_functions import run_db
 from util.log_manager import get_logger
+
+# The one range that each user only gets a single roll of per day (the day turns over at midnight Eastern)
+DAILY_RANGE = (1, 1000)
+
+
+def claim_daily_spin(guild_id, user_id, choice, now):
+    """Record a user's roll of the daily range. Returns None if it counts, or today's earlier roll if they already had one"""
+    spin_id = {"guild_id": guild_id, "user_id": user_id, "day": now.strftime("%Y-%m-%d")}
+    try:
+        # The day is part of the _id, so two rolls at the same moment cannot both get in
+        RNG_SPINS.insert_one({"_id": spin_id, "number": choice, "rolled_at": datetime.utcnow()})
+        return None
+    except DuplicateKeyError:
+        return RNG_SPINS.find_one({"_id": spin_id})
 
 
 class Fun(commands.Cog):
@@ -82,6 +99,22 @@ class Fun(commands.Cog):
             return
         
         choice = random.randint(first, last)
+        if (first, last) == DAILY_RANGE:
+            now = datetime.now(EST_TIME)
+            earlier = await run_db(claim_daily_spin, interaction.guild.id, interaction.user.id, choice, now)
+            if earlier is not None:
+                log.info("RNG_DAILY_LIMIT: Already rolled today")
+                midnight = datetime.combine(now.date() + timedelta(days=1), datetime.min.time(), tzinfo=EST_TIME)
+                await interaction.response.send_message(
+                    embed = Embed(
+                        description = f"You already rolled {first} - {last} today and got **{earlier['number']}**. "
+                                      f"Your next roll opens <t:{int(midnight.timestamp())}:R>.",
+                        color = Color.red()
+                    ),
+                    ephemeral = True
+                )
+                return
+
         embed = Embed(
                 description = f"The number **{choice}** was chosen!",
                 color = Color.green() 

@@ -19,6 +19,8 @@ WATCHLIST = cluster["watchlist"]
 WRAPPED_DAILY = cluster["wrappeddaily"]
 BOT_STATE = cluster["botstate"]
 POLL_REQUESTS = cluster["pollrequests"]
+REMINDERS = cluster["reminders"]
+RNG_SPINS = cluster["rngspins"]
 EVENT_ARCHIVE_DIR = "bot/archive/"
 
 # Set WRAPPED_TRACKING=0 when running a second (dev) instance against the same database,
