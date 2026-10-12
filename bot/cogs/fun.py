@@ -2,8 +2,9 @@ import discord
 from discord.ext import commands, tasks
 from discord import Embed, Color, app_commands
 import random
+import re
 from time import sleep
-from datetime import datetime, timedelta
+from datetime import datetime
 from pymongo.errors import DuplicateKeyError
 from util.constants import INTEGER_CONVERSION_FAIL, USERS, RNG_SPINS, EST_TIME
 from util.helper_functions import run_db
@@ -12,13 +13,21 @@ from util.log_manager import get_logger
 # The one range that each user only gets a single roll of per day (the day turns over at midnight Eastern)
 DAILY_RANGE = (1, 1000)
 
+# What a second roll in the same day gets instead of a number
+RESPIN_GIF = "https://klipy.com/gifs/outta-pocket-red-card"
 
-def claim_daily_spin(guild_id, user_id, choice, now):
+# Beast Bot's /67 rolls the same range, so a roll there uses up the day's roll here too
+BEAST_BOT_ID = 956617402781671465
+BEAST_NUMBER = re.compile(r"The number (-?\d+) was chosen")
+BEAST_RANGE = re.compile(r"Range provided\s*:\s*(-?\d+)\s*-\s*(-?\d+)")
+
+
+def claim_daily_spin(guild_id, user_id, choice, now, source="rng"):
     """Record a user's roll of the daily range. Returns None if it counts, or today's earlier roll if they already had one"""
     spin_id = {"guild_id": guild_id, "user_id": user_id, "day": now.strftime("%Y-%m-%d")}
     try:
         # The day is part of the _id, so two rolls at the same moment cannot both get in
-        RNG_SPINS.insert_one({"_id": spin_id, "number": choice, "rolled_at": datetime.utcnow()})
+        RNG_SPINS.insert_one({"_id": spin_id, "number": choice, "rolled_at": datetime.utcnow(), "source": source})
         return None
     except DuplicateKeyError:
         return RNG_SPINS.find_one({"_id": spin_id})
@@ -100,19 +109,13 @@ class Fun(commands.Cog):
         
         choice = random.randint(first, last)
         if (first, last) == DAILY_RANGE:
-            now = datetime.now(EST_TIME)
-            earlier = await run_db(claim_daily_spin, interaction.guild.id, interaction.user.id, choice, now)
+            earlier = await run_db(
+                claim_daily_spin, interaction.guild.id, interaction.user.id, choice, datetime.now(EST_TIME)
+            )
             if earlier is not None:
                 log.info("RNG_DAILY_LIMIT: Already rolled today")
-                midnight = datetime.combine(now.date() + timedelta(days=1), datetime.min.time(), tzinfo=EST_TIME)
-                await interaction.response.send_message(
-                    embed = Embed(
-                        description = f"You already rolled {first} - {last} today and got **{earlier['number']}**. "
-                                      f"Your next roll opens <t:{int(midnight.timestamp())}:R>.",
-                        color = Color.red()
-                    ),
-                    ephemeral = True
-                )
+                # Out in the open, so everyone sees the attempt at a second roll
+                await interaction.response.send_message(RESPIN_GIF)
                 return
 
         embed = Embed(
@@ -125,6 +128,36 @@ class Fun(commands.Cog):
             embed = embed
         )
     
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        """Count a roll of the daily range on Beast Bot as the user's roll for the day"""
+        if message.author.id != BEAST_BOT_ID or message.guild is None or not message.embeds:
+            return
+        embed = message.embeds[0]
+        number = BEAST_NUMBER.search(embed.description or "")
+        bounds = BEAST_RANGE.search(embed.footer.text or "")
+        # Whoever ran the command, which is not the author of the message (that is the bot)
+        command = getattr(message, "interaction_metadata", None) or message.interaction
+        if not number or not bounds or command is None:
+            return
+        if (int(bounds.group(1)), int(bounds.group(2))) != DAILY_RANGE:
+            return
+
+        log = get_logger(__name__, server=message.guild.name, user=command.user.name)
+        earlier = await run_db(
+            claim_daily_spin, message.guild.id, command.user.id, int(number.group(1)), datetime.now(EST_TIME), "beast"
+        )
+        if earlier is None:
+            log.info("RNG_DAILY_BEAST: Recorded")
+            return
+
+        # A second roll over there cannot be stopped from here, but it can be called out
+        log.info("RNG_DAILY_BEAST: Already rolled today")
+        try:
+            await message.reply(RESPIN_GIF, mention_author=False)
+        except discord.HTTPException:
+            log.exception("RNG_DAILY_BEAST: Could not reply to the second roll")
+
     @app_commands.command(description = "Display this server's level leaderboard")
     async def leaderboard(self, interaction : discord.Interaction):
         
