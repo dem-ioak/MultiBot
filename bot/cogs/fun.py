@@ -147,16 +147,8 @@ class Fun(commands.Cog):
         earlier = await run_db(
             claim_daily_spin, message.guild.id, command.user.id, int(number.group(1)), datetime.now(EST_TIME), "beast"
         )
-        if earlier is None:
-            log.info("RNG_DAILY_BEAST: Recorded")
-            return
-
-        # A second roll over there cannot be stopped from here, but it can be called out
-        log.info("RNG_DAILY_BEAST: Already rolled today")
-        try:
-            await message.reply(RESPIN_GIF, mention_author=False)
-        except discord.HTTPException:
-            log.exception("RNG_DAILY_BEAST: Could not reply to the second roll")
+        # A second roll over there is only logged, calling it out is left to Beast Bot
+        log.info(f"RNG_DAILY_BEAST: {'Recorded' if earlier is None else 'Already rolled today'}")
 
     @app_commands.command(description = "Display this server's level leaderboard")
     async def leaderboard(self, interaction : discord.Interaction):
