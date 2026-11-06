@@ -21,6 +21,7 @@ BOT_STATE = cluster["botstate"]
 POLL_REQUESTS = cluster["pollrequests"]
 REMINDERS = cluster["reminders"]
 RNG_SPINS = cluster["rngspins"]
+RATINGS_67 = cluster["ratings67"]
 EVENT_ARCHIVE_DIR = "bot/archive/"
 
 # Set WRAPPED_TRACKING=0 when running a second (dev) instance against the same database,
@@ -29,6 +30,7 @@ TRACKING_ENABLED = os.getenv("WRAPPED_TRACKING", "1") != "0"
 MY_USER_ID = 739618992393682974
 DAMNIT_ID = 529893177524617221
 DAMNIT_GUILD = DObject(DAMNIT_ID)
+SIXTY_SEVEN_THREAD_ID = 1481301658204897330
 
 
 # Bot Messages

@@ -4,3 +4,5 @@ python-dotenv>=1.0
 requests>=2.31
 dateparser>=1.2
 tzdata
+anthropic>=2.6,<3
+pillow>=10
