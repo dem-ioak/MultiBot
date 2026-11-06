@@ -26,33 +26,56 @@ MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024
 # Images are shrunk to this many pixels on the long side before they are sent, which keeps each call cheap
 MAX_IMAGE_SIDE = 1024
 
-SYSTEM_PROMPT = """You judge entries in a Discord thread where friends post photos and screenshots of the number 67 they find out in the world.
+SYSTEM_PROMPT = """You judge entries in a Discord thread where friends post the number 67 they spot out in the world. The whole point of the thread is going outside and noticing 67s in real life, so reward that generously.
 
-Score the picture from 1 to 10 on:
-- How clean the 67 is: clearly a 67, easy to spot, not a stretch.
-- How surprising the find is: an unexpected place beats an obvious one.
-- Whether it is out in the wild: a real find in the real world beats something staged or made on purpose for the thread.
+What counts as a 67:
+- A 6 followed directly by a 7, read left to right or top to bottom.
+- A split 67 counts fully, with no penalty: the 6 and 7 may be separated by a decimal point, comma, colon, dash, slash, space or line break. "6.7", "$6.72", "16,7", "6-7", "6/7" and "6 7" all contain a valid 67.
+- The 67 can sit inside a longer number: "1678", "$26.72" and "0.67" all count.
+- "Sixty-seven" written out counts too.
+Look carefully at every number in the picture before deciding there is no 67.
+
+First decide in_person:
+- true: a photo the poster took with their own camera of something physical in front of them: signs, receipts, shelves, clothes, cars, screens photographed with a phone.
+- false: a screenshot, a meme, a post, an article, a video frame or anything else digital.
+
+Scoring. Use the whole scale; do not default to the middle.
+In-person finds (in_person true):
+- 10: an incredible find: a surprising place, perfectly clear, the kind of thing the whole thread reacts to.
+- 9: a great find: unexpected and clean.
+- 8: a solid, real find: an ordinary place but clearly a 67 that someone actually noticed. This is the normal score for a good in-person 67.
+- 7: a real find that is hard to spot, partly hidden, blurry, or a split 67 that takes a second look.
+- 5 to 6: only when the 67 is barely readable or a real stretch.
+Do not take points off an in-person find for being merchandise, clothing, a store display, a price, a jersey or a product label. Those are real 67s in the wild, not staged.
+Screenshots and digital finds (in_person false): score 2 to 5. A funny or surprising digital 67 gets 5; an ordinary one gets 3 or 4.
 
 Give a yellow card to a 67 that was bound to show up, because it is not a real find:
-- Anything in a numbered sequence: house and door numbers, highway exits, lockers, seats, rooms, page numbers, scoreboard frames, list positions.
-- Counters and readings that pass through 67 on their way somewhere: battery percentage, temperature, miles to empty, timers, clocks, progress bars, step counts.
+- A position in a numbered sequence: house and door numbers, highway exits, lockers, seats, rooms, page numbers, list positions.
+- A counter or reading that passes through 67 on its way somewhere: battery percentage, temperature, miles to empty, timers, clocks, progress bars, step counts.
+Prices, totals, receipts, phone numbers, license plates, jerseys and product codes are not yellow cards.
 A yellow-carded 67 scores 3 or less.
 
-If there is no 67 in the picture, or you cannot find one, say so: is_67 is false and the score is 1.
-Keep the verdict to one or two short sentences, in a casual tone."""
+Also give a yellow card, scored 1 to 3, to a 67 that was clearly made or set up for the thread: written by hand for the photo, typed into a phone or calculator, or arranged on purpose.
+
+If there is no 67 in the picture at all, is_67 is false and the score is 1.
+Keep the verdict to one or two short sentences, in a casual, hype tone for great finds. Write the verdict before choosing the score."""
 
 RATING_SCHEMA = {
     "type": "object",
     "properties": {
         "is_67": {"type": "boolean"},
-        "where": {"type": "string", "description": "Where the 67 is in the picture, in a few words"},
+        "where": {"type": "string", "description": "Where the 67 is in the picture and the exact characters, in a few words"},
+        "in_person": {"type": "boolean", "description": "True for a camera photo of the physical world, false for screenshots and digital content"},
         "card": {"type": "string", "enum": ["none", "yellow"]},
-        "score": {"type": "integer", "description": "1 to 10"},
         "verdict": {"type": "string"},
+        "score": {"type": "integer", "description": "1 to 10"},
     },
-    "required": ["is_67", "where", "card", "score", "verdict"],
+    "required": ["is_67", "where", "in_person", "card", "verdict", "score"],
     "additionalProperties": False,
 }
+
+# Hard limits on top of the prompt, so a score can't land outside its band
+DIGITAL_MAX, YELLOW_MAX = 5, 3
 
 
 def failure(description):
@@ -87,6 +110,8 @@ def rating_embed(message, rating, requested_by):
     embed = Embed(title=title, description=rating["verdict"], color=color)
     if rating["is_67"] and rating["where"]:
         embed.add_field(name="The 67", value=rating["where"], inline=False)
+    if rating["is_67"] and "in_person" in rating:
+        embed.add_field(name="Found", value="📸 In real life" if rating["in_person"] else "🖥️ Online", inline=False)
     embed.set_author(name=message.author.display_name, icon_url=message.author.display_avatar.url)
     embed.set_footer(text=f"Rated by Claude Haiku for {requested_by}")
     return embed
@@ -121,7 +146,14 @@ class Rate67(commands.Cog):
         if response.stop_reason != "end_turn":
             return None
         rating = json.loads(next(block.text for block in response.content if block.type == "text"))
-        rating["score"] = max(1, min(10, int(rating["score"])))
+        score = max(1, min(10, int(rating["score"])))
+        if not rating["is_67"]:
+            score = 1
+        elif rating["card"] == "yellow":
+            score = min(score, YELLOW_MAX)
+        elif not rating["in_person"]:
+            score = min(score, DIGITAL_MAX)
+        rating["score"] = score
         return rating
 
     async def rate(self, interaction: discord.Interaction, message: discord.Message):
