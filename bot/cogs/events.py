@@ -18,6 +18,7 @@ from util.constants import SERVERS, BOARDS, WATCHLIST, WATCHLIST_EMBED
 from util.helper_functions import board_view_description, generate_wl_page
 from util.buttons.board_buttons import BoardView, BoardListView, shown_board
 from util.buttons.watchlist_buttons import WatchListView
+from util.buttons.voicecommands_buttons import post_panel
 from util.log_manager import get_logger
 
 GIF_HOSTS = ("tenor.com", "giphy.com", "klipy.com")
@@ -665,6 +666,12 @@ class Events(commands.Cog):
                     {"_id": created_channel.id},
                     {"$set": {"deleted_at": datetime.utcnow()}},
                 )
+            else:
+                # The control panel, right in the channel's own chat
+                try:
+                    await post_panel(created_channel)
+                except Exception:
+                    log.exception("Could not post the voice channel panel")
 
     @commands.Cog.listener()
     async def on_message(self, message):
