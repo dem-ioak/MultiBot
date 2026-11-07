@@ -30,6 +30,7 @@ import logging
 logger = logging.getLogger("data")
 
 BANISHED_ROLE_NAME = "Banished"
+BANISHED_CHAT_NAME = "banished-chat"
 NO_BANISHED_ROLE = "This server does not have a banished role set up. An admin can create one with `/banish_setup`."
 MISSING_PERMISSIONS = (
     "I am not allowed to do that. I need the **Manage Roles** and **Manage Channels** permissions, "
@@ -59,8 +60,38 @@ def set_banished_channel(guild, user_id, channel_id):
     )
 
 
-async def apply_banishment(member, role, channel_id=-1):
-    """Put a member into the banished state: role on, own channel present and visible, out of voice.
+def get_banished_chat_id(guild):
+    server_data = SERVERS.find_one({"_id": guild.id}) or {}
+    return server_data.get("banished_chat", -1)
+
+
+def is_corner(guild, channel_id):
+    """Whether a banishment channel is someone's own corner, rather than the shared banished chat.
+    Corners are deleted when their owner is unbanished; the shared chat never is"""
+    return channel_id != -1 and channel_id != get_banished_chat_id(guild)
+
+
+async def get_banished_chat(guild, role):
+    """The text channel every banished user shares. Created (and remembered) if there is none yet"""
+    channel = guild.get_channel(get_banished_chat_id(guild))
+    if channel is None:
+        channel = await guild.create_text_channel(
+            name=BANISHED_CHAT_NAME,
+            overwrites={
+                guild.default_role: discord.PermissionOverwrite(view_channel=False),
+                role: discord.PermissionOverwrite(view_channel=True, send_messages=True),
+                guild.me: discord.PermissionOverwrite(view_channel=True, manage_channels=True),
+            },
+        )
+        SERVERS.update_one({"_id": guild.id}, {"$set": {"banished_chat": channel.id}})
+    elif channel.overwrites_for(role).view_channel is not True:
+        await channel.set_permissions(role, view_channel=True, send_messages=True)
+    return channel
+
+
+async def apply_banishment(member, role, channel_id=-1, own_corner=False):
+    """Put a member into the banished state: role on, sent to the shared banished chat (or their own
+    corner), out of voice.
 
     Safe to repeat. It is used both to banish someone and to restore a banishment that has come
     undone, such as when the member left the server and came back. Returns their channel."""
@@ -70,8 +101,11 @@ async def apply_banishment(member, role, channel_id=-1):
         await member.add_roles(role)
 
     try:
-        channel = guild.get_channel(channel_id)
-        if channel is None:
+        channel = guild.get_channel(channel_id) if own_corner else None
+        if not own_corner:
+            # Seen through the banished role, so nothing per member is needed
+            channel = await get_banished_chat(guild, role)
+        elif channel is None:
             channel = await guild.create_text_channel(
                 name=f"{member.name}s corner",
                 overwrites={
@@ -159,12 +193,13 @@ class Moderation(commands.Cog):
             await interaction.response.send_message(ephemeral=True, content="✅")
 
     @app_commands.command(description="Banish a user.")
+    @app_commands.describe(own_corner="Send them to their own private channel instead of the shared banished chat")
     @app_commands.guild_only()
     async def banish(
-        self, interaction: discord.Interaction, user: discord.Member, reason: str = None
+        self, interaction: discord.Interaction, user: discord.Member, reason: str = None, own_corner: bool = False
     ):
         log = get_logger(__name__, server=interaction.guild.name, user=interaction.user.name)
-        log.info(f"COMMAND_INVOKED: /banish [user={user}, reason={reason}]")
+        log.info(f"COMMAND_INVOKED: /banish [user={user}, reason={reason}, own_corner={own_corner}]")
         await interaction.response.defer()
 
         guild = interaction.guild
@@ -176,18 +211,21 @@ class Moderation(commands.Cog):
         elif user.bot:
             embed.description = "Bots cannot be banished."
         else:
+            already = channel_id != -1
+            if already:
+                # Someone already banished stays where they are; this only repairs a missing role or channel
+                own_corner = is_corner(guild, channel_id)
             try:
-                # Also ran for someone already banished, which repairs a missing role or channel
-                channel = await apply_banishment(user, role, channel_id)
+                channel = await apply_banishment(user, role, channel_id, own_corner)
             except discord.Forbidden:
                 embed.description = MISSING_PERMISSIONS
             else:
                 set_banished_channel(guild, user.id, channel.id)
-                if channel_id != -1:
+                if already:
                     embed.description = f"{user.mention} is already banished, to {channel.mention}."
                 else:
                     embed.description = BANISHED_SUCCESS_MESSAGE.format(
-                        user.mention, reason or "No reason given"
+                        user.mention, channel.mention, reason or "No reason given"
                     )
                     embed.color = Color.green()
 
@@ -230,7 +268,8 @@ class Moderation(commands.Cog):
             if member and role and role in member.roles:
                 await member.remove_roles(role)
 
-            channel = guild.get_channel(channel_id)
+            # Only a personal corner goes away; the shared banished chat stays for everyone else
+            channel = guild.get_channel(channel_id) if is_corner(guild, channel_id) else None
             if channel:
                 await channel.delete()
         except discord.Forbidden:
@@ -299,7 +338,7 @@ class Moderation(commands.Cog):
             return
 
         log = get_logger(__name__, server=member.guild.name, user=member.name)
-        channel = await apply_banishment(member, role, channel_id)
+        channel = await apply_banishment(member, role, channel_id, is_corner(member.guild, channel_id))
         set_banished_channel(member.guild, member.id, channel.id)
         log.info("A banished user rejoined the server, their banishment has been restored")
 
@@ -315,8 +354,9 @@ class Moderation(commands.Cog):
             return
 
         log = get_logger(__name__, server=after.guild.name, user=after.name)
+        corner = is_corner(after.guild, channel_id)
         set_banished_channel(after.guild, after.id, -1)
-        channel = after.guild.get_channel(channel_id)
+        channel = after.guild.get_channel(channel_id) if corner else None
         if channel:
             await channel.delete()
         log.info("The banished role was removed by hand, this user has been unbanished")

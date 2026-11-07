@@ -77,6 +77,7 @@ class Server:
     polls_id : int = -1
     join_to_create : int = -1
     afk_corner : int = -1
+    banished_chat : int = -1  # The text channel banished users share
 
     vibes : bool = False
     auto_chop : bool = False
